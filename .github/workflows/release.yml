@@ -21,7 +21,9 @@ jobs:
         include:
           - os: macos-14
             target: aarch64-apple-darwin
-          - os: macos-13
+          # x86_64 也在 arm64 机器上交叉编译：macos-13 runner 已在退役，
+          # 排队常常等不到；Xcode 自带两个架构的 SDK，交叉编译开箱可用。
+          - os: macos-14
             target: x86_64-apple-darwin
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
