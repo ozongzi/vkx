@@ -13,9 +13,11 @@
 #
 # 参数：
 #   -NoAndroid   跳过 Android 相关组件（省约 5 GB）
+#   -NoVkx       只装环境，不装 vkx 本体（自己开发 vkx 时用）
 
 param(
     [switch]$NoAndroid,
+    [switch]$NoVkx,
     [switch]$Force
 )
 
@@ -133,6 +135,7 @@ foreach ($line in Get-Content $manifestPath) {
 
     if ($entryPlatform -ne $platform -and $entryPlatform -ne "any") { continue }
     if ($NoAndroid -and ($name -like "android-*" -or $name -eq "jdk" -or $name -eq "gradle" -or $name -eq "sdl-android")) { continue }
+    if ($NoVkx -and $name -eq "vkx") { continue }
 
     Install-Component $name $version $path $sha $dest
     if ($name -eq "android-ndk") { $ndkVersion = $version }
@@ -232,7 +235,7 @@ function Test-Tool($label, $exe, $arguments) {
         Write-Warn "$label 装上了却跑不起来：$exe"
     }
 }
-Test-Tool "vkx"    (Join-Path $vkxHome "bin\vkx.exe") @("--version")
+if (-not $NoVkx) { Test-Tool "vkx" (Join-Path $vkxHome "bin\vkx.exe") @("--version") }
 Test-Tool "cmake"  (Join-Path $vkxHome "tools\cmake\bin\cmake.exe") @("--version")
 Test-Tool "ninja"  (Join-Path $vkxHome "tools\ninja\ninja.exe") @("--version")
 Test-Tool "slangc" (Join-Path $vkxHome "tools\slang\bin\slangc.exe") @("-h")

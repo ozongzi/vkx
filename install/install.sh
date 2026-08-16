@@ -14,6 +14,8 @@
 #
 # 参数：
 #   --no-android   跳过 Android 相关组件（省约 5 GB）
+#   --no-vkx       只装环境，不装 vkx 本体
+#                  （自己开发 vkx 时用：留给 cargo install 的那份）
 
 set -eu
 
@@ -23,10 +25,12 @@ MIRROR=${MIRROR%/}
 HOME_DIR=${VKX_HOME:-$HOME/.vkx}
 FORCE=${VKX_FORCE:-}
 WITH_ANDROID=1
+WITH_VKX=1
 
 for arg in "$@"; do
     case "$arg" in
         --no-android) WITH_ANDROID=0 ;;
+        --no-vkx) WITH_VKX=0 ;;
         --force) FORCE=1 ;;
         *) printf '未知参数: %s\n' "$arg" >&2; exit 2 ;;
     esac
@@ -146,6 +150,9 @@ while IFS='	' read -r name platform version path sha dest; do
             android-*|jdk|gradle|sdl-android) continue ;;
         esac
     fi
+    if [ "$WITH_VKX" = 0 ] && [ "$name" = vkx ]; then
+        continue
+    fi
 
     install_component "$name" "$version" "$path" "$sha" "$dest"
     [ "$name" = "android-ndk" ] && NDK_VERSION=$version
@@ -243,7 +250,9 @@ check_tool() {
         warn "$label 装上了却跑不起来：$1"
     fi
 }
-check_tool vkx    "$HOME_DIR/bin/vkx" --version
+if [ "$WITH_VKX" = 1 ]; then
+    check_tool vkx "$HOME_DIR/bin/vkx" --version
+fi
 check_tool cmake  "$HOME_DIR/tools/cmake/bin/cmake" --version
 check_tool ninja  "$HOME_DIR/tools/ninja/ninja" --version
 check_tool slangc "$HOME_DIR/tools/slang/bin/slangc" -h
