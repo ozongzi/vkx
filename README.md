@@ -53,13 +53,19 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; iwr -useb https://yinli.tech/f
 ## 建镜像
 
 ```sh
-mirror/sync.sh mirror-root                       # 同步全部平台，约 6~8 GB
+mirror/sync.sh mirror-root                       # 同步全部平台，约 5 GB
 mirror/sync.sh mirror-root --platform macos-arm64  # 只同步一个平台
 mirror/sync.sh mirror-root --skip android-ndk      # 跳过某些组件
 VKX_LOCAL_BIN=target/release/vkx mirror/sync.sh mirror-root   # 还没发版时用本机编的 vkx
 
 rsync -av --delete mirror-root/ user@host:/var/www/file/   # 对应 yinli.tech/file
 ```
+
+同一个上游文件服务多个平台时（macOS 的通用二进制、Windows 的 x64 包等）
+只存一份，清单里多条记录指向同一个路径。
+
+**注意 NDK 的宿主平台**：Google 只为 macOS、linux-x86_64、windows-x86_64
+发布 NDK，所以 ARM64 的 Linux/Windows 机器无法构建 Android。
 
 **同步最好直接在服务器上跑**：镜像要下几个 GB，服务器到上游的带宽通常比你本机
 的上行快两个数量级（实测本机上传 ~1 MB/s，服务器同步 531 MB 只花了 40 秒）。

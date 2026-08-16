@@ -39,6 +39,9 @@ trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$OUT"
 MANIFEST="$OUT/manifest.txt"
 : > "$MANIFEST.new"
+# 记录「上游 URL -> 镜像里的路径」，用来给多平台共用的包去重。
+URLMAP="$WORK/urlmap"
+: > "$URLMAP"
 
 log()  { printf '\033[1;32m==>\033[0m %s\n' "$1"; }
 info() { printf '    %s\n' "$1"; }
@@ -58,11 +61,24 @@ fetch() {
     [ -z "$PLATFORM_FILTER" ] || [ "$PLATFORM_FILTER" = "$platform" ] || [ "$platform" = any ] || return 0
     case ",$SKIP," in *",$name,"*) return 0 ;; esac
 
+    # 同一个上游文件常常服务多个平台（比如 macOS 的包是通用二进制，
+    # arm64 和 x86_64 共用）。已经打过包的就直接复用，不再存第二份。
+    local seen
+    # grep 找不到会返回 1，配上 set -e 会直接终止脚本，所以要兜住。
+    seen=$(grep -F "$url	" "$URLMAP" 2>/dev/null | head -1 | cut -f2 || true)
+    if [ -n "$seen" ]; then
+        info "$name ($platform) 复用 $seen"
+        printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+            "$name" "$platform" "$version" "$seen" "$(sha256 "$OUT/$seen")" "$dest" >> "$MANIFEST.new"
+        return 0
+    fi
+
     local out_rel="$name/$version/$name-$version-$platform.tar.gz"
     local out_abs="$OUT/$out_rel"
 
     if [ -f "$out_abs" ]; then
         info "已有 $out_rel"
+        printf '%s\t%s\n' "$url" "$out_rel" >> "$URLMAP"
         printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
             "$name" "$platform" "$version" "$out_rel" "$(sha256 "$out_abs")" "$dest" >> "$MANIFEST.new"
         return 0
@@ -103,8 +119,13 @@ fetch() {
     info "打包 $out_rel"
     tar -czf "$out_abs" -C "$root" .
 
+    printf '%s\t%s\n' "$url" "$out_rel" >> "$URLMAP"
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
         "$name" "$platform" "$version" "$out_rel" "$(sha256 "$out_abs")" "$dest" >> "$MANIFEST.new"
+
+    # 打完包立刻清掉解压出来的东西。NDK 这种解开有好几 GB，
+    # 攒到脚本结束才清会把磁盘撑爆。
+    rm -rf "$dir"
 }
 
 # ===========================================================================
