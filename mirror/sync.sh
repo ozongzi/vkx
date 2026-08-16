@@ -220,13 +220,18 @@ VKX_VERSION=${VKX_VERSION:-}
 if [ -n "${VKX_LOCAL_BIN:-}" ]; then
     # 还没发过版时，直接把本机编好的 vkx 塞进镜像。
     [ -f "$VKX_LOCAL_BIN" ] || die "VKX_LOCAL_BIN 指向的文件不存在: $VKX_LOCAL_BIN"
+    # 默认按本机平台标注；在别的机器上打包时用 VKX_LOCAL_PLATFORM 指定。
+    if [ -n "${VKX_LOCAL_PLATFORM:-}" ]; then
+        local_platform=$VKX_LOCAL_PLATFORM
+    else
     case "$(uname -s)-$(uname -m)" in
         Darwin-arm64)  local_platform=macos-arm64 ;;
         Darwin-x86_64) local_platform=macos-x86_64 ;;
         Linux-x86_64)  local_platform=linux-x86_64 ;;
         Linux-aarch64) local_platform=linux-aarch64 ;;
-        *) die "VKX_LOCAL_BIN 不支持当前平台" ;;
+        *) die "VKX_LOCAL_BIN 不支持当前平台，请用 VKX_LOCAL_PLATFORM 指定" ;;
     esac
+    fi
     version=${VKX_VERSION:-0.1.0}
     out_rel="vkx/$version/vkx-$version-$local_platform.tar.gz"
     log "vkx $version (${local_platform}，来自本机)"
@@ -257,10 +262,13 @@ mv "$MANIFEST.new" "$MANIFEST"
 # 安装脚本本身也放进镜像根目录，这样上传一次，用户 curl 一个地址就够了。
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 for script in install.sh install.ps1; do
-    if [ -f "$SCRIPT_DIR/../install/$script" ]; then
-        cp "$SCRIPT_DIR/../install/$script" "$OUT/$script"
-        info "放入 $script"
-    fi
+    for candidate in "$SCRIPT_DIR/../install/$script" "$SCRIPT_DIR/$script"; do
+        if [ -f "$candidate" ]; then
+            cp "$candidate" "$OUT/$script"
+            info "放入 $script"
+            break
+        fi
+    done
 done
 
 log "完成"

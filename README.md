@@ -61,6 +61,34 @@ VKX_LOCAL_BIN=target/release/vkx mirror/sync.sh mirror-root   # 还没发版时�
 rsync -av --delete mirror-root/ user@host:/var/www/file/   # 对应 yinli.tech/file
 ```
 
+**同步最好直接在服务器上跑**：镜像要下几个 GB，服务器到上游的带宽通常比你本机
+的上行快两个数量级（实测本机上传 ~1 MB/s，服务器同步 531 MB 只花了 40 秒）。
+把 `sync.sh` 和安装脚本传上去，直接输出到 web 根目录即可：
+
+```sh
+rsync -a mirror/sync.sh install/install.sh install/install.ps1 root@host:/root/vkx-tools/
+ssh root@host 'cd /root/vkx-tools && bash sync.sh /var/www/file'
+```
+
+还没发版时，可以把本机编好的 vkx 一起带上去，用 `VKX_LOCAL_PLATFORM` 标明它是哪个平台的：
+
+```sh
+VKX_LOCAL_BIN=/root/vkx-tools/vkx VKX_LOCAL_PLATFORM=macos-arm64 bash sync.sh /var/www/file
+```
+
+Caddy 那侧加一个分支就行：
+
+```caddy
+yinli.tech {
+    handle_path /file/* {
+        root * /var/www/file
+        file_server
+        header Cache-Control "public, max-age=86400"
+    }
+    # ...原有的其它 handle
+}
+```
+
 产出的目录树：
 
 ```
