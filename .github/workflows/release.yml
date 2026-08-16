@@ -1,0 +1,82 @@
+name: release
+
+# 打一个 v* 标签就会构建各平台的 vkx 并发到 GitHub Release，
+# install/install.sh 与 install/install.ps1 下载的就是这里产出的包。
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+          - os: macos-13
+            target: x86_64-apple-darwin
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Rust
+        run: rustup target add ${{ matrix.target }}
+
+      - name: 编译
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: 打包 (unix)
+        if: runner.os != 'Windows'
+        run: |
+          version="${GITHUB_REF_NAME}"
+          name="vkx-${version}-${{ matrix.target }}"
+          # 压缩包里就一个可执行文件，安装脚本直接取 ./vkx
+          tar -czf "${name}.tar.gz" -C "target/${{ matrix.target }}/release" vkx
+          shasum -a 256 "${name}.tar.gz" > "${name}.tar.gz.sha256"
+
+      - name: 打包 (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME
+          $name = "vkx-$version-${{ matrix.target }}"
+          Compress-Archive -Path "target/${{ matrix.target }}/release/vkx.exe" -DestinationPath "$name.zip"
+          (Get-FileHash "$name.zip" -Algorithm SHA256).Hash | Out-File "$name.zip.sha256" -Encoding ascii
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            vkx-*.tar.gz
+            vkx-*.zip
+            vkx-*.sha256
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true

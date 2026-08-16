@@ -1,0 +1,100 @@
+// Android App 的构建配置。
+// 原生代码不在这里编：externalNativeBuild 会去调用工程根目录的 CMakeLists.txt。
+
+plugins {
+    id "com.android.application"
+}
+
+// release 签名的密钥信息。keystore.properties 和 keystore/ 都由 vkx 生成，
+// 并且都在 .gitignore 里——不要提交进版本库。
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
+android {
+    namespace "{{PACKAGE_ID}}"
+    compileSdk 35
+
+    // NDK 路径由 vkx 探测后通过 -PvkxNdkPath 传进来。
+    // 用 Android Studio 直接打开时没有这个属性，走 AGP 的默认查找。
+    if (project.hasProperty("vkxNdkPath")) {
+        ndkPath = project.property("vkxNdkPath")
+    }
+
+    defaultConfig {
+        applicationId "{{PACKAGE_ID}}"
+        minSdk 28          // Vulkan 1.3 的驱动在 Android 9 以后才普遍可用
+        targetSdk 35
+        versionCode 1
+        versionName "0.1.0"
+
+        externalNativeBuild {
+            cmake {
+                // 传给 CMake 的参数，路径都由 vkx 用 -P 属性提供：
+                //   vkxSlangc         着色器编译器
+                //   vkxVulkanHeaders  本地的 Vulkan-Headers 源码，避免构建时联网
+                //   vkxVolk           本地的 volk 源码
+                arguments "-DANDROID_STL=c++_shared",
+                          "-DVKX_SLANGC=${project.findProperty('vkxSlangc') ?: 'slangc'}",
+                          "-DFETCHCONTENT_SOURCE_DIR_VULKANHEADERS=${project.findProperty('vkxVulkanHeaders') ?: ''}",
+                          "-DFETCHCONTENT_SOURCE_DIR_VOLK=${project.findProperty('vkxVolk') ?: ''}"
+            }
+        }
+
+        ndk {
+            // 只编 64 位 ARM。要支持模拟器（x86_64）或老设备时在这里加。
+            abiFilters "arm64-v8a"
+        }
+    }
+
+    // 打开 prefab，CMake 才能用 find_package(SDL3 CONFIG) 找到 .aar 里的 SDL3。
+    buildFeatures {
+        prefab true
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "../../CMakeLists.txt"   // 工程根目录那份，五平台共用
+            version "3.24.0+"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    signingConfigs {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                storeFile rootProject.file(keystoreProperties["storeFile"])
+                storePassword keystoreProperties["storePassword"]
+                keyAlias keystoreProperties["keyAlias"]
+                keyPassword keystoreProperties["keyPassword"]
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            // debug 包由 Android 自带的调试密钥签名，装设备即可。
+            debuggable true
+        }
+        release {
+            minifyEnabled false
+            // 有密钥就签名；没有的话 AGP 会产出 app-release-unsigned.apk。
+            if (keystorePropertiesFile.exists()) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+}
+
+dependencies {
+    // SDL3 官方 .aar，由 `vkx build --target android` 自动下载到 app/libs/。
+    // 它同时提供 libSDL3.so、头文件和 Java 层的 SDLActivity。
+    implementation fileTree(dir: "libs", include: ["*.aar"])
+    // 其它 Android 依赖加在这里。
+}

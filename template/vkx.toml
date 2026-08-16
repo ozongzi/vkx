@@ -1,0 +1,17 @@
+# 工程描述文件。vkx 靠它认出工程根目录，并读取下面这些字段。
+[project]
+# 可执行文件名，同时也是 CMake 里的 target 名。
+name = "{{PROJECT_NAME}}"
+# Android 的 applicationId 和 iOS 的 bundle identifier。
+package_id = "{{PACKAGE_ID}}"
+# 发布版本号，vkx dist 产出的包名和各平台的版本字段都取自这里。
+version = "0.1.0"
+
+[vkx]
+# 生成这个工程时用的 vkx 版本。
+version = "{{VKX_VERSION}}"
+
+[ios]
+# Apple 开发者团队 ID。填了之后 iOS 真机构建会打开自动签名。
+# 在 developer.apple.com 的 Membership 页面能查到。
+# development_team = "ABCDE12345"

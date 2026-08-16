@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- App 用到的文本资源。桌面图标下显示的名字就取自 app_name。 -->
+<resources>
+    <string name="app_name">{{PROJECT_NAME}}</string>
+</resources>

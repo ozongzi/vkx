@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- iOS App 包的描述文件：名字、版本、支持的方向、启动方式。
+     $(...) 形式的值由 Xcode 在构建时替换，具体取值见 CMakeLists.txt 的 IOS 分支。 -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>{{PROJECT_NAME}}</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSRequiresIPhoneOS</key>
+    <true/>
+
+    <!-- 空字典表示用系统默认的启动画面。 -->
+    <key>UILaunchScreen</key>
+    <dict/>
+
+    <!-- 声明采用 UIScene 生命周期，并指定由 SDL 的 SDLUIKitSceneDelegate 接管。
+         用 iOS 26 及以上的 SDK 构建时这一段是必需的，缺了 App 起来就会被挂起。 -->
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+        <key>UISceneConfigurations</key>
+        <dict>
+            <key>UIWindowSceneSessionRoleApplication</key>
+            <array>
+                <dict>
+                    <key>UISceneConfigurationName</key>
+                    <string>SDLSceneConfiguration</string>
+                    <key>UISceneDelegateClassName</key>
+                    <string>SDLUIKitSceneDelegate</string>
+                </dict>
+            </array>
+        </dict>
+    </dict>
+
+    <!-- 接收鼠标、触控板等间接输入事件。 -->
+    <key>UIApplicationSupportsIndirectInputEvents</key>
+    <true/>
+
+    <!-- 设备必须支持的能力，不满足的机型装不上。 -->
+    <key>UIRequiredDeviceCapabilities</key>
+    <array>
+        <string>arm64</string>
+        <string>metal</string>
+    </array>
+
+    <!-- 只支持横屏。要支持竖屏就在这里加 UIInterfaceOrientationPortrait。 -->
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+
+    <key>UIStatusBarHidden</key>
+    <true/>
+</dict>
+</plist>

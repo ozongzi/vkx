@@ -1,0 +1,8 @@
+# Rust
+/target
+
+# 镜像同步产出的目录树，体积很大，不进版本库
+/mirror-root/
+/mirror/mirror-root/
+
+.DS_Store
