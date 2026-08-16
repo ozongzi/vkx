@@ -1,6 +1,6 @@
 [package]
 name = "vkx"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Vulkan + SDL3 跨平台游戏工程脚手架"
 
