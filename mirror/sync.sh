@@ -125,10 +125,11 @@ VOLK=1.4.304
 
 NDK=28.2.13676358          # 对应上游文件名里的 r28c
 NDK_FILE=r28c
-BUILD_TOOLS_MAC=36.1
-BUILD_TOOLS_WIN=36.1
-BUILD_TOOLS_LINUX=36       # Linux 上游只发到 r36，没有 r36.1
-ANDROID_PLATFORM=36
+# build-tools 的上游文件名用 r36.1，但包里的真实版本号是 36.1.0，
+# 安装目录必须用后者——AGP 是按精确的版本目录名去找的。
+BUILD_TOOLS_FILE=r36.1
+BUILD_TOOLS=36.1.0
+ANDROID_PLATFORM=36        # = Android 16，对应模版里的 compileSdk 36
 CMDLINE_TOOLS=11076708
 
 GH=https://github.com
@@ -185,12 +186,12 @@ fetch android-platform-tools latest linux-aarch64   "$DL/platform-tools-latest-l
 fetch android-platform-tools latest windows-x86_64  "$DL/platform-tools-latest-windows.zip" android/sdk/platform-tools
 fetch android-platform-tools latest windows-aarch64 "$DL/platform-tools-latest-windows.zip" android/sdk/platform-tools
 
-fetch android-build-tools "$BUILD_TOOLS_MAC"   macos-arm64     "$DL/build-tools_r${BUILD_TOOLS_MAC}_macosx.zip"   "android/sdk/build-tools/$BUILD_TOOLS_MAC"
-fetch android-build-tools "$BUILD_TOOLS_MAC"   macos-x86_64    "$DL/build-tools_r${BUILD_TOOLS_MAC}_macosx.zip"   "android/sdk/build-tools/$BUILD_TOOLS_MAC"
-fetch android-build-tools "$BUILD_TOOLS_LINUX" linux-x86_64    "$DL/build-tools_r${BUILD_TOOLS_LINUX}_linux.zip"  "android/sdk/build-tools/$BUILD_TOOLS_LINUX"
-fetch android-build-tools "$BUILD_TOOLS_LINUX" linux-aarch64   "$DL/build-tools_r${BUILD_TOOLS_LINUX}_linux.zip"  "android/sdk/build-tools/$BUILD_TOOLS_LINUX"
-fetch android-build-tools "$BUILD_TOOLS_WIN"   windows-x86_64  "$DL/build-tools_r${BUILD_TOOLS_WIN}_windows.zip"  "android/sdk/build-tools/$BUILD_TOOLS_WIN"
-fetch android-build-tools "$BUILD_TOOLS_WIN"   windows-aarch64 "$DL/build-tools_r${BUILD_TOOLS_WIN}_windows.zip"  "android/sdk/build-tools/$BUILD_TOOLS_WIN"
+fetch android-build-tools "$BUILD_TOOLS" macos-arm64     "$DL/build-tools_${BUILD_TOOLS_FILE}_macosx.zip"  "android/sdk/build-tools/$BUILD_TOOLS"
+fetch android-build-tools "$BUILD_TOOLS" macos-x86_64    "$DL/build-tools_${BUILD_TOOLS_FILE}_macosx.zip"  "android/sdk/build-tools/$BUILD_TOOLS"
+fetch android-build-tools "$BUILD_TOOLS" linux-x86_64    "$DL/build-tools_${BUILD_TOOLS_FILE}_linux.zip"   "android/sdk/build-tools/$BUILD_TOOLS"
+fetch android-build-tools "$BUILD_TOOLS" linux-aarch64   "$DL/build-tools_${BUILD_TOOLS_FILE}_linux.zip"   "android/sdk/build-tools/$BUILD_TOOLS"
+fetch android-build-tools "$BUILD_TOOLS" windows-x86_64  "$DL/build-tools_${BUILD_TOOLS_FILE}_windows.zip" "android/sdk/build-tools/$BUILD_TOOLS"
+fetch android-build-tools "$BUILD_TOOLS" windows-aarch64 "$DL/build-tools_${BUILD_TOOLS_FILE}_windows.zip" "android/sdk/build-tools/$BUILD_TOOLS"
 
 fetch android-platform "$ANDROID_PLATFORM" any "$DL/platform-${ANDROID_PLATFORM}_r01.zip" "android/sdk/platforms/android-$ANDROID_PLATFORM"
 
@@ -249,11 +250,17 @@ elif [ -n "$VKX_VERSION" ]; then
     fetch vkx "$VKX_VERSION" linux-aarch64   "$R/vkx-v$VKX_VERSION-aarch64-unknown-linux-gnu.tar.gz" bin
     fetch vkx "$VKX_VERSION" windows-x86_64  "$R/vkx-v$VKX_VERSION-x86_64-pc-windows-msvc.zip"       bin
     fetch vkx "$VKX_VERSION" windows-aarch64 "$R/vkx-v$VKX_VERSION-aarch64-pc-windows-msvc.zip"      bin
-else
-    # 保留上一次同步的 vkx 条目，避免误删。
-    if [ -f "$MANIFEST" ]; then
-        grep '^vkx	' "$MANIFEST" >> "$MANIFEST.new" 2>/dev/null || true
-    fi
+fi
+
+# 合并上一次的清单：这次没处理到的条目（被 --only / --platform / --skip
+# 过滤掉的那些）原样保留，否则一次带过滤参数的同步就会把清单洗掉。
+if [ -f "$MANIFEST" ]; then
+    while IFS=$'\t' read -r old_name old_platform old_rest; do
+        [ -n "$old_name" ] || continue
+        if ! grep -q "^$old_name$(printf '\t')$old_platform$(printf '\t')" "$MANIFEST.new"; then
+            printf '%s\t%s\t%s\n' "$old_name" "$old_platform" "$old_rest" >> "$MANIFEST.new"
+        fi
+    done < "$MANIFEST"
 fi
 
 sort -o "$MANIFEST.new" "$MANIFEST.new"

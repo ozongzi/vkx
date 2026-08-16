@@ -15,18 +15,24 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace "{{PACKAGE_ID}}"
-    compileSdk 35
+    // 这三个版本必须和 vkx 装好的 Android SDK 里实际有的包对应，
+    // 否则 AGP 会去联网补下载。改之前先确认镜像里有对应的包。
+    compileSdk 36
+    buildToolsVersion "36.1.0"
 
     // NDK 路径由 vkx 探测后通过 -PvkxNdkPath 传进来。
     // 用 Android Studio 直接打开时没有这个属性，走 AGP 的默认查找。
     if (project.hasProperty("vkxNdkPath")) {
         ndkPath = project.property("vkxNdkPath")
+        // ndkVersion 有个跟着 AGP 版本走的默认值，AGP 会拿它去校验 ndkPath
+        // 指向的 NDK，对不上就报 CXX1100。NDK 的目录名就是版本号，直接取。
+        ndkVersion = new File(ndkPath as String).name
     }
 
     defaultConfig {
         applicationId "{{PACKAGE_ID}}"
         minSdk 28          // Vulkan 1.3 的驱动在 Android 9 以后才普遍可用
-        targetSdk 35
+        targetSdk 36
         versionCode 1
         versionName "0.1.0"
 
