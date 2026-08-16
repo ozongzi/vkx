@@ -42,7 +42,17 @@ development_team = "ABCDE12345"
 
 | 路径 | 内容 |
 | --- | --- |
-| `src/main.cpp` | 全部代码：初始化 Vulkan、渲染循环、清理 |
+| `src/main.cpp` | 入口、初始化顺序、主循环、清理 |
+| `src/instance.cpp` | 实例、校验层、窗口表面 |
+| `src/device.cpp` | 挑显卡、建逻辑设备 |
+| `src/swapchain.cpp` | 交换链及其图像（窗口尺寸一变就整组重建）|
+| `src/vertex_buffer.cpp` | 顶点缓冲和显存 |
+| `src/pipeline.cpp` | 着色器模块、图形管线 |
+| `src/frame.cpp` | 每帧资源、录制命令、画一帧 |
+| `src/app.h` | Application 类：全部状态都挂在这里 |
+| `src/vertex.h` | 顶点数据——想改三角形改这里 |
+| `src/error.h` `.cpp` | 错误上报和 `VKX_CHECK` |
+| `src/vulkan_api.h` | Vulkan 头文件的来源开关（volk / 静态 MoltenVK）|
 | `shaders/triangle.slang` | 顶点和片元着色器 |
 | `CMakeLists.txt` | 构建脚本，五个平台共用 |
 | `cmake/VkxShaders.cmake` | 着色器编译规则：`.slang` → `.spv` → `.h` |
@@ -50,6 +60,10 @@ development_team = "ABCDE12345"
 | `android/` | Gradle 工程；SDL3 的 `.aar` 由 vkx 自动放进 `app/libs/` |
 | `ios/Info.plist` | iOS 应用包的配置 |
 | `build/` | 构建产物，可随时删 |
+
+源文件按流程切分，顺序和 `main.cpp` 里 `init()` 的调用顺序一致：
+实例 → 表面 → 物理设备 → 逻辑设备 → 交换链 → 顶点缓冲 → 管线 → 每帧资源。
+要改哪一步就打开对应的文件，不用在一个上千行的文件里找。
 
 ## 运行时的几个机制
 

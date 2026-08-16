@@ -90,8 +90,16 @@ endif()
 # 可执行目标
 # ---------------------------------------------------------------------------
 
-# 新增 .cpp 文件时加到这里。
-set(VKX_SOURCES src/main.cpp)
+# 新增 .cpp 文件时加到这里。每个文件对应流程里的一步，顺序和 init() 一致。
+set(VKX_SOURCES
+    src/main.cpp            # 入口、初始化顺序、主循环
+    src/error.cpp           # 错误上报
+    src/instance.cpp        # 实例、校验层、窗口表面
+    src/device.cpp          # 挑显卡、逻辑设备
+    src/swapchain.cpp       # 交换链
+    src/vertex_buffer.cpp   # 顶点缓冲
+    src/pipeline.cpp        # 着色器模块、图形管线
+    src/frame.cpp)          # 每帧资源、录制命令、画一帧
 
 if(ANDROID)
     # Android 上没有可执行文件：Java 层的 SDLActivity 会去加载名为 main 的共享库，
@@ -159,7 +167,7 @@ endif()
 # ---------------------------------------------------------------------------
 # 着色器：Slang -> SPIR-V -> 嵌入头文件
 # ---------------------------------------------------------------------------
-# 每条规则处理一个入口点，生成的头文件由 src/main.cpp 直接 #include。
+# 每条规则处理一个入口点，生成的头文件由 src/pipeline.cpp 直接 #include。
 # 加新着色器时在下面照着补一条。
 
 vkx_add_slang_shader(${VKX_TARGET}
