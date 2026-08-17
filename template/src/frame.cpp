@@ -1,216 +1,59 @@
-// 第六步：每帧的资源，以及一帧真正是怎么画出来的。
+// 第九步：每帧一份的资源。
+//
+// CPU 录制命令和 GPU 执行命令是并行的。CPU 在录第 N+1 帧的时候，GPU 很可能
+// 还在执行第 N 帧。两帧共用同一个命令缓冲的话，CPU 就会往一个 GPU 正在读的
+// 缓冲里写东西。
+//
+// 因此备 kFramesInFlight 套资源轮流使用：录第 N 帧用第 N%2 套，录第 N+1 帧
+// 用第 (N+1)%2 套。轮回到第 N 套时 GPU 通常已经画完，每套另配一个栅栏来
+// 确认这一点。
 #include "app.h"
 #include "error.h"
-#include "vertex.h"
-
-#include <iterator>
 
 // 建每帧一份的资源：命令缓冲、信号量、栅栏。
-// 信号量用于 GPU 内部排队，栅栏用于 CPU 等 GPU。
+//
+// 信号量和栅栏都是同步原语，区别在于谁在等：
+//   信号量（VkSemaphore）  GPU 内部排队用，CPU 看不见它的状态
+//   栅栏（VkFence）        给 CPU 等 GPU 用，CPU 可以查询、可以阻塞等待
 bool Application::createFrameResources()
 {
+    // 命令池是命令缓冲的内存来源。一个池只能被一个线程同时使用，
+    // 多线程录制时要一个线程一个池。
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;  // 允许单个重置后重录
-    poolInfo.queueFamilyIndex = queueFamily_;
+    // 这个标志允许单独重置池里的某一个缓冲（vkResetCommandBuffer）。
+    // 不加的话只能整池一起重置，而每帧要重置的只是当前这一个。
+    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    poolInfo.queueFamilyIndex = queueFamily_;   // 录出来的命令只能提交给这个族的队列
     VKX_CHECK(vkCreateCommandPool(device_, &poolInfo, nullptr, &commandPool_));
 
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.commandPool = commandPool_;
+    // PRIMARY 可以直接提交给队列；SECONDARY 只能被 primary 调用，
+    // 多线程分工录制时才用得上。
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     allocInfo.commandBufferCount = kFramesInFlight;
+    // 一次分配 kFramesInFlight 个，直接填进数组。
+    // 命令缓冲不需要单独销毁，销毁命令池时会一起没（见 ~Application()）。
     VKX_CHECK(vkAllocateCommandBuffers(device_, &allocInfo, commandBuffers_));
 
     for (uint32_t i = 0; i < kFramesInFlight; ++i) {
-        // imageAvailable_：交换链图像取到手了，可以开始画。
+        // imageAvailable_：交换链图像取到手了，可以开始往上面画。
+        // 这是 GPU 内部的等待——提交命令时挂上它，GPU 会自己等。
         VkSemaphoreCreateInfo semaphoreInfo{};
         semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
         VKX_CHECK(vkCreateSemaphore(device_, &semaphoreInfo, nullptr, &imageAvailable_[i]));
 
-        // inFlight_：这一套资源上一次提交的活干完了没有。
-        // 建成已触发状态，第一帧才不会卡在等待上。
+        // inFlight_：这一套资源上一次提交的活干完了没有。这个要 CPU 来等。
+        //
+        // 建成「已触发」状态：第一帧时这套资源还没提交过任何东西，栅栏若是
+        // 未触发的，drawFrame() 开头那句 vkWaitForFences 会一直等下去。
         VkFenceCreateInfo fenceInfo{};
         fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
         fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
         VKX_CHECK(vkCreateFence(device_, &fenceInfo, nullptr, &inFlight_[i]));
     }
 
-    return true;
-}
-
-// 录制一帧的命令：
-//   转换图像布局 -> 开始渲染 -> 设视口 -> 绑管线和顶点缓冲 -> 画 -> 结束渲染 -> 转成可呈现
-bool Application::recordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex)
-{
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;  // 录一次用一次
-    VKX_CHECK(vkBeginCommandBuffer(cmd, &beginInfo));
-
-    // 屏障之一：把图像从「内容未定义」转成「可以当颜色附件写」。
-    // 屏障同时描述布局变化和执行/内存依赖，Vulkan 不会自动帮你做。
-    VkImageMemoryBarrier2 toAttachment{};
-    toAttachment.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-    toAttachment.srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
-    toAttachment.srcAccessMask = 0;
-    toAttachment.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-    toAttachment.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-    toAttachment.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    toAttachment.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    toAttachment.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    toAttachment.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    toAttachment.image = swapchainImages_[imageIndex];
-    toAttachment.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    toAttachment.subresourceRange.levelCount = 1;
-    toAttachment.subresourceRange.layerCount = 1;
-
-    VkDependencyInfo dependency{};
-    dependency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-    dependency.imageMemoryBarrierCount = 1;
-    dependency.pImageMemoryBarriers = &toAttachment;
-    vkCmdPipelineBarrier2(cmd, &dependency);
-
-    // 这一帧往哪张图像上画、开画时怎么处理已有内容、画完是否保留。
-    VkRenderingAttachmentInfo colorAttachment{};
-    colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-    colorAttachment.imageView = swapchainViews_[imageIndex];
-    colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;    // 先清屏
-    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;  // 画完留下来
-    colorAttachment.clearValue.color = {{0.02f, 0.02f, 0.05f, 1.0f}};  // 背景色
-
-    VkRenderingInfo rendering{};
-    rendering.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-    rendering.renderArea.extent = swapchainExtent_;
-    rendering.layerCount = 1;
-    rendering.colorAttachmentCount = 1;
-    rendering.pColorAttachments = &colorAttachment;
-
-    vkCmdBeginRendering(cmd, &rendering);
-
-    // 视口决定画到图像的哪块区域，裁剪矩形之外的像素会被丢弃。
-    VkViewport viewport{};
-    viewport.width = static_cast<float>(swapchainExtent_.width);
-    viewport.height = static_cast<float>(swapchainExtent_.height);
-    viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(cmd, 0, 1, &viewport);
-
-    VkRect2D scissor{};
-    scissor.extent = swapchainExtent_;
-    vkCmdSetScissor(cmd, 0, 1, &scissor);
-
-    // 绑管线、绑数据、下达绘制命令。
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
-
-    const VkDeviceSize offset = 0;
-    vkCmdBindVertexBuffers(cmd, 0, 1, &vertexBuffer_, &offset);
-    vkCmdDraw(cmd, static_cast<uint32_t>(std::size(kVertices)), 1, 0, 0);
-    // 要画更多东西，就在这里继续绑管线 / 绑缓冲 / vkCmdDraw。
-
-    vkCmdEndRendering(cmd);
-
-    // 屏障之二：转成可呈现布局，交给显示系统。
-    // 大部分字段和上一个屏障相同，直接复制再改差异项。
-    VkImageMemoryBarrier2 toPresent = toAttachment;
-    toPresent.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-    toPresent.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-    toPresent.dstStageMask = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
-    toPresent.dstAccessMask = 0;
-    toPresent.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    toPresent.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    dependency.pImageMemoryBarriers = &toPresent;
-    vkCmdPipelineBarrier2(cmd, &dependency);
-
-    VKX_CHECK(vkEndCommandBuffer(cmd));
-    return true;
-}
-
-// 画一帧：
-//   等这套资源空出来 -> 取一张交换链图像 -> 录制命令 -> 提交 -> 呈现
-bool Application::drawFrame()
-{
-    // 交换链还没建好（首帧或最小化恢复），先补上。
-    if (swapchain_ == VK_NULL_HANDLE || swapchainDirty_) {
-        if (!recreateSwapchain()) {
-            return false;
-        }
-        if (swapchain_ == VK_NULL_HANDLE) {
-            SDL_Delay(16);   // 仍然最小化，空转一帧的时间
-            return true;
-        }
-    }
-
-    // 等这一套每帧资源上次提交的命令跑完，才能安全重用它们。
-    VKX_CHECK(vkWaitForFences(device_, 1, &inFlight_[frame_], VK_TRUE, UINT64_MAX));
-
-    // 向交换链要一张可以画的图像。函数会立刻返回，图像真正可用时
-    // imageAvailable_ 才被触发，所以下面提交时要等这个信号量。
-    uint32_t imageIndex = 0;
-    VkResult acquired = vkAcquireNextImageKHR(device_, swapchain_, UINT64_MAX,
-                                              imageAvailable_[frame_], VK_NULL_HANDLE, &imageIndex);
-    if (acquired == VK_ERROR_OUT_OF_DATE_KHR) {
-        // 交换链和窗口尺寸对不上了，这帧作废，下一帧重建。
-        swapchainDirty_ = true;
-        return true;
-    }
-    if (acquired != VK_SUCCESS && acquired != VK_SUBOPTIMAL_KHR) {
-        VKX_CHECK(acquired);
-    }
-
-    // 确认这一帧会提交之后再重置栅栏：上面提前 return 的路径不能重置，
-    // 否则会留下一个永远等不到触发的栅栏。
-    VKX_CHECK(vkResetFences(device_, 1, &inFlight_[frame_]));
-
-    VkCommandBuffer cmd = commandBuffers_[frame_];
-    VKX_CHECK(vkResetCommandBuffer(cmd, 0));
-    if (!recordCommandBuffer(cmd, imageIndex)) {
-        return false;
-    }
-
-    // 提交：等 imageAvailable_，跑完命令后触发 renderFinished_ 和栅栏。
-    VkSemaphoreSubmitInfo waitInfo{};
-    waitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-    waitInfo.semaphore = imageAvailable_[frame_];
-    waitInfo.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;  // 只有写颜色时才需要等
-
-    VkSemaphoreSubmitInfo signalInfo{};
-    signalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-    signalInfo.semaphore = renderFinished_[imageIndex];
-    signalInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
-
-    VkCommandBufferSubmitInfo cmdInfo{};
-    cmdInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
-    cmdInfo.commandBuffer = cmd;
-
-    VkSubmitInfo2 submit{};
-    submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
-    submit.waitSemaphoreInfoCount = 1;
-    submit.pWaitSemaphoreInfos = &waitInfo;
-    submit.commandBufferInfoCount = 1;
-    submit.pCommandBufferInfos = &cmdInfo;
-    submit.signalSemaphoreInfoCount = 1;
-    submit.pSignalSemaphoreInfos = &signalInfo;
-
-    VKX_CHECK(vkQueueSubmit2(queue_, 1, &submit, inFlight_[frame_]));
-
-    // 呈现：等渲染完成信号量，然后把这张图像送去显示。
-    VkPresentInfoKHR present{};
-    present.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-    present.waitSemaphoreCount = 1;
-    present.pWaitSemaphores = &renderFinished_[imageIndex];
-    present.swapchainCount = 1;
-    present.pSwapchains = &swapchain_;
-    present.pImageIndices = &imageIndex;
-
-    VkResult presented = vkQueuePresentKHR(queue_, &present);
-    if (presented == VK_ERROR_OUT_OF_DATE_KHR || presented == VK_SUBOPTIMAL_KHR) {
-        swapchainDirty_ = true;
-    } else if (presented != VK_SUCCESS) {
-        VKX_CHECK(presented);
-    }
-
-    // 轮到下一套每帧资源。
-    frame_ = (frame_ + 1) % kFramesInFlight;
     return true;
 }

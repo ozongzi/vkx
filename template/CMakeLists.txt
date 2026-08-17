@@ -92,14 +92,21 @@ endif()
 
 # 新增 .cpp 文件时加到这里。每个文件对应流程里的一步，顺序和 init() 一致。
 set(VKX_SOURCES
-    src/main.cpp            # 入口、初始化顺序、主循环
+    src/main.cpp            # 程序入口
+    src/app.cpp             # 组装顺序、主循环、析构清理
     src/error.cpp           # 错误上报
-    src/instance.cpp        # 实例、校验层、窗口表面
+    src/platform.cpp        # SDL、Vulkan 运行时、窗口
+    src/instance.cpp        # 实例
+    src/debug.cpp           # 校验层消息出口
+    src/surface.cpp         # 窗口表面
     src/device.cpp          # 挑显卡、逻辑设备
     src/swapchain.cpp       # 交换链
+    src/memory.cpp          # 找显存类型
     src/vertex_buffer.cpp   # 顶点缓冲
-    src/pipeline.cpp        # 着色器模块、图形管线
-    src/frame.cpp)          # 每帧资源、录制命令、画一帧
+    src/shader.cpp          # SPIR-V -> VkShaderModule
+    src/pipeline.cpp        # 图形管线
+    src/frame.cpp           # 每帧资源
+    src/draw.cpp)           # 录制命令、画一帧
 
 if(ANDROID)
     # Android 上没有可执行文件：Java 层的 SDLActivity 会去加载名为 main 的共享库，

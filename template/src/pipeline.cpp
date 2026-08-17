@@ -1,24 +1,14 @@
-// 第五步：图形管线——着色器和全部固定功能状态打包成的一个不可变对象。
+// 第八步：图形管线——着色器和全部固定功能状态打包成的一个不可变对象。
 //
 // 下面这两个头文件由构建系统生成：slangc 把 shaders/triangle.slang 编成
 // SPIR-V，再转成 C 数组。内容是 kTriangleVertSpv / kTriangleFragSpv 及其长度。
+// 把字节码变成 VkShaderModule 的 createShaderModule() 在 shader.cpp 里。
 #include "app.h"
 #include "error.h"
 #include "vertex.h"
 
 #include "triangle_frag.spv.h"
 #include "triangle_vert.spv.h"
-
-// 把一段 SPIR-V 字节码包成 VkShaderModule。
-bool Application::createShaderModule(const unsigned char* code, size_t size, VkShaderModule* out)
-{
-    VkShaderModuleCreateInfo info{};
-    info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    info.codeSize = size;
-    info.pCode = reinterpret_cast<const uint32_t*>(code);
-    VKX_CHECK(vkCreateShaderModule(device_, &info, nullptr, out));
-    return true;
-}
 
 // 创建图形管线：把着色器、顶点布局和所有固定功能状态一次性固化下来。
 // 这个函数很长，因为 Vulkan 要求把每一项状态都写清楚，没有默认值。
