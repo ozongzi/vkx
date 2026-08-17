@@ -117,6 +117,7 @@ manifest.txt                     组件 平台 版本 路径 sha256 安装目标
 | `vkx build [--release] [--target <平台>]` | 构建 |
 | `vkx run [--release] [--target <平台>]` | 构建并运行 |
 | `vkx dist [--target <平台>]` | 打出可以直接分发的安装包 |
+| `vkx fmt [--check]` | 按工程根的 `.clang-format` 格式化 `src/`；`--check` 只检查不改，给 CI 用 |
 | `vkx clean` | 删掉 build/ |
 
 `--target` 可选：`desktop`（默认）、`android`、`ios`（模拟器）、`ios-device`。
@@ -160,9 +161,8 @@ macOS 上还额外设了 `SDL_VULKAN_LIBRARY`（loader 的绝对路径）和 `VK
 `src/` 里的源码通过 CMake 的 `FETCHCONTENT_SOURCE_DIR_*` 直接喂给工程，
 所以构建全程不联网，产物也不会依赖机器上装的系统 SDL3。
 
-`env.sh` 里除了 PATH，macOS 上还会设 `DYLD_LIBRARY_PATH` 指向自带的 MoltenVK
-——开发期直接运行构建出来的可执行文件时靠它找到 Vulkan。vkx 自己不注入任何
-环境变量，运行时原样继承你 shell 里的环境。
+vkx 自己不注入任何环境变量，运行时原样继承你 shell 里的环境——所以上面那几个
+变量都由 `env.sh` 提供，安装脚本会把它接进你的 shell。
 
 ## 分发
 
