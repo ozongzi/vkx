@@ -1,0 +1,183 @@
+name: vulkan-sdk
+
+# 把 Vulkan 的 loader 和校验层做成各平台的精简包，发到一个单独的 Release。
+#
+# 为什么要这一步：
+#   · 校验层是 Debug 构建能报出「你用错了 Vulkan」的唯一途径，但它不在显卡驱动里，
+#     必须自己分发。macOS 上尤其如此——那儿连 loader 都没有。
+#   · 上游只有 LunarG 的整包（每平台 274~493 MB），而且 macOS / Windows 版是 Qt
+#     安装器，install.sh 那种 sh 脚本跑不动。这里把需要的几个文件挑出来重打包，
+#     体积降到几十 MB，格式统一成「解开就是 ~/.vkx/tools/vulkan 的内容」。
+#   · LunarG 不提供 Linux ARM64，那个平台从源码编。
+#
+# 手动触发，只在 Vulkan 版本升级时需要跑。产出被 mirror/sync.sh 的
+# vulkan-sdk 组件消费。
+on:
+  workflow_dispatch:
+    inputs:
+      sdk_version:
+        description: "SDK 版本，用于产物命名和 Release 标签（如 1.4.357）"
+        required: true
+        default: "1.4.357"
+
+permissions:
+  contents: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 从 LunarG 的整包里挑文件
+  # ---------------------------------------------------------------------------
+  extract:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS 的库是 universal（x86_64 + arm64），一个包服务两个平台，
+          # 所以这里只跑一次，由 sync.sh 把它登记成两条清单记录。
+          - os: macos-14
+            platform: macos-universal
+            lunarg: mac
+          - os: ubuntu-latest
+            platform: linux-x86_64
+            lunarg: linux
+          - os: windows-latest
+            platform: windows-x86_64
+            lunarg: windows
+          - os: windows-11-arm
+            platform: windows-aarch64
+            lunarg: warm
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # LunarG 每个平台的完整版本号不一样（曾出现过 linux 是 .1 而其余是 .0），
+      # 所以按平台各查一次，下载时用查到的确切版本，避免 latest 在中途变动。
+      - name: 解析上游版本
+        shell: bash
+        run: |
+          full=$(curl -fsSL "https://vulkan.lunarg.com/sdk/latest/${{ matrix.lunarg }}.json" \
+                 | python3 -c "import json,sys; print(json.load(sys.stdin)['${{ matrix.lunarg }}'])")
+          echo "上游版本: $full（产物按 ${{ inputs.sdk_version }} 命名）"
+          echo "FULL_VERSION=$full" >> "$GITHUB_ENV"
+
+      # --- macOS：zip 里是个 Qt 安装器，用它的无界面模式装出来 ----------------
+      - name: 取出 SDK (macOS)
+        if: matrix.lunarg == 'mac'
+        shell: bash
+        run: |
+          curl -fsSL "https://sdk.lunarg.com/sdk/download/${FULL_VERSION}/mac/vulkan-sdk.zip" -o sdk.zip
+          mkdir -p sdk-zip && unzip -q sdk.zip -d sdk-zip
+          app=$(ls -d sdk-zip/*.app)
+          # Qt Installer Framework 的无界面安装：不弹窗、自动接受许可、自动确认。
+          "$app/Contents/MacOS/$(basename "$app" .app)" \
+              --root "$PWD/sdk" --accept-licenses --default-answer --confirm-command install
+          echo "SDK_ROOT=$PWD/sdk" >> "$GITHUB_ENV"
+
+      # --- Linux：真 tar.xz，直接解 -----------------------------------------
+      - name: 取出 SDK (Linux)
+        if: matrix.lunarg == 'linux'
+        shell: bash
+        run: |
+          curl -fsSL "https://sdk.lunarg.com/sdk/download/${FULL_VERSION}/linux/vulkan-sdk.tar.xz" -o sdk.tar.xz
+          mkdir -p sdk && tar -xf sdk.tar.xz -C sdk
+          echo "SDK_ROOT=$PWD/sdk" >> "$GITHUB_ENV"
+
+      # --- Windows：同样是 Qt 安装器，flag 完全一样 -------------------------
+      - name: 取出 SDK (Windows)
+        if: matrix.lunarg == 'windows' || matrix.lunarg == 'warm'
+        shell: bash
+        run: |
+          curl -fsSL "https://sdk.lunarg.com/sdk/download/${FULL_VERSION}/${{ matrix.lunarg }}/vulkan-sdk.exe" -o sdk.exe
+          ./sdk.exe --root "$PWD/sdk" --accept-licenses --default-answer --confirm-command install
+          echo "SDK_ROOT=$PWD/sdk" >> "$GITHUB_ENV"
+
+      # 各平台的目录布局不一样（macOS/lib、x86_64/lib、Bin），所以不写死路径，
+      # 一律靠文件名去找，并把找到的东西打印出来——CI 日志就是这一步的说明书。
+      - name: 挑文件并归一化
+        shell: bash
+        run: |
+          python3 .github/scripts/pack_vulkan_sdk.py \
+              --sdk-root "$SDK_ROOT" \
+              --platform "${{ matrix.platform }}" \
+              --version "${{ inputs.sdk_version }}" \
+              --out "$PWD/out"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}
+          path: out/*
+
+  # ---------------------------------------------------------------------------
+  # LunarG 不提供 Linux ARM64，从源码编校验层
+  # ---------------------------------------------------------------------------
+  build-linux-arm:
+    name: linux-aarch64（源码构建）
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 装构建依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build python3 git \
+              libx11-dev libxrandr-dev libwayland-dev
+
+      - name: 编译 Vulkan-ValidationLayers
+        run: |
+          # 分支名和 SDK 版本一一对应，这样编出来的层和别的平台是同一版。
+          full=$(curl -fsSL "https://vulkan.lunarg.com/sdk/latest/linux.json" \
+                 | python3 -c "import json,sys; print(json.load(sys.stdin)['linux'])")
+          # linux 的第四位可能和其它平台不同，取前三位拼出 Khronos 的 tag。
+          tag="vulkan-sdk-$(echo "$full" | cut -d. -f1-3).0"
+          echo "按 tag $tag 构建"
+          git clone --depth 1 --branch "$tag" \
+              https://github.com/KhronosGroup/Vulkan-ValidationLayers.git vvl
+          cd vvl
+          # update_deps.py 会把 Vulkan-Headers、SPIRV-Tools 等依赖拉齐并生成
+          # helper.cmake，把它们的位置告诉主构建。
+          python3 scripts/update_deps.py --dir external --config release --generator Ninja
+          cmake -S . -B build -G Ninja -C external/helper.cmake \
+                -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF
+          cmake --build build --parallel
+
+      - name: 挑文件并归一化
+        run: |
+          python3 .github/scripts/pack_vulkan_sdk.py \
+              --sdk-root "$PWD/vvl/build" \
+              --platform linux-aarch64 \
+              --version "${{ inputs.sdk_version }}" \
+              --out "$PWD/out"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-aarch64
+          path: out/*
+
+  # ---------------------------------------------------------------------------
+  # 汇总发布
+  # ---------------------------------------------------------------------------
+  release:
+    needs: [extract, build-linux-arm]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: 列一下要发布的东西
+        run: ls -lh artifacts/
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: vulkan-sdk-${{ inputs.sdk_version }}
+          name: Vulkan SDK ${{ inputs.sdk_version }}（loader + 校验层）
+          body: |
+            供 `mirror/sync.sh` 的 `vulkan-sdk` 组件使用，不是给人直接下载的。
+
+            内容为从 LunarG Vulkan SDK ${{ inputs.sdk_version }} 中挑出的
+            Vulkan loader 与 khronos validation 层（Linux ARM64 由源码构建）。
+            两者均为 Apache-2.0。
+          files: artifacts/*

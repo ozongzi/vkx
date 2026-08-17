@@ -138,10 +138,24 @@ $ vkx new
   bin/vkx
   env.sh                       PATH / JAVA_HOME / ANDROID_HOME，安装脚本接进你的 shell
   installed.txt                已装组件和版本，用于增量升级
-  tools/{cmake,ninja,slang,jdk,gradle,moltenvk,llvm-mingw}
+  tools/{cmake,ninja,slang,jdk,gradle,moltenvk,vulkan,llvm-mingw}
   android/sdk/{cmdline-tools,platform-tools,build-tools,platforms,ndk}
   src/{sdl3,sdl3-android,vulkan-headers,volk}    构建时离线取用
 ```
+
+`tools/vulkan` 里是 Vulkan loader 和 khronos 校验层。校验层不在显卡驱动里，
+Debug 构建要靠它报出用错 Vulkan 的地方，所以得自己分发。上游只有 LunarG 的整包
+（每平台 274~493 MB，macOS / Windows 版还是安装脚本跑不动的 Qt 安装器），
+于是由 `.github/workflows/vulkan-sdk.yml` 挑出需要的几个文件重打包成几十 MB，
+发到一个单独的 Release，再由 `sync.sh` 的 `vulkan-sdk` 组件镜像过来。
+LunarG 不提供 Linux ARM64，那个平台在同一个 workflow 里从源码构建。
+
+Vulkan 版本升级时手动触发那个 workflow，改 `sync.sh` 顶部的 `VULKAN_SDK` 再重跑同步。
+
+macOS 上还额外设了 `SDL_VULKAN_LIBRARY`（loader 的绝对路径）和 `VK_DRIVER_FILES`：
+那是唯一连 loader 都没有的平台，不明确指定的话 SDL 会退而直接加载 MoltenVK，
+绕过 loader，校验层就无从插入。这几个变量都不用 `DYLD_*`——macOS 的 SIP 会在执行
+系统二进制时把 `DYLD_*` 剥掉，只要中间隔一层 `/bin/sh` 就失效。
 
 `src/` 里的源码通过 CMake 的 `FETCHCONTENT_SOURCE_DIR_*` 直接喂给工程，
 所以构建全程不联网，产物也不会依赖机器上装的系统 SDL3。

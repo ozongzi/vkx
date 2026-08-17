@@ -14,6 +14,12 @@ bool Application::initPlatform()
         return false;
     }
 
+    // SDL 给绝大多数日志分类的默认门槛是 ERROR，只有 APPLICATION 分类是 INFO。
+    // 校验层的消息和「校验层不可用」这类提示都走 GPU 分类的 WARN 级别，
+    // 不把门槛降下来就一个字也看不到——看起来像是「没有问题」，
+    // 实际是「有问题但没人告诉你」。
+    SDL_SetLogPriority(SDL_LOG_CATEGORY_GPU, SDL_LOG_PRIORITY_WARN);
+
     // 由 SDL 去找当前平台的 Vulkan 实现：Windows/Linux 是驱动带的 loader，
     // Apple 平台是 MoltenVK，Android 是系统的 libvulkan.so。
     //

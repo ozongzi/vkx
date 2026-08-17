@@ -174,6 +174,18 @@ if (-not $NoAndroid) {
     }
 }
 
+# 校验层：Debug 构建靠它报出用错 Vulkan 的地方。用 VK_ADD_LAYER_PATH 而不是
+# VK_LAYER_PATH，机器上原有的层照旧可用。
+# Windows 的 loader（vulkan-1.dll）和 ICD 都由显卡驱动提供，只需补校验层，
+# 所以这里不设 SDL_VULKAN_LIBRARY 和 VK_DRIVER_FILES。
+$layerPath = Join-Path $vkxHome "tools\vulkan\share\vulkan\explicit_layer.d"
+$existingLayers = [Environment]::GetEnvironmentVariable("VK_ADD_LAYER_PATH", "User")
+if ($existingLayers -and -not ($existingLayers -split ';' -contains $layerPath)) {
+    Set-UserEnv "VK_ADD_LAYER_PATH" "$layerPath;$existingLayers"
+} elseif (-not $existingLayers) {
+    Set-UserEnv "VK_ADD_LAYER_PATH" $layerPath
+}
+
 $pathEntries = @(
     (Join-Path $vkxHome "bin"),
     (Join-Path $vkxHome "tools\cmake\bin"),

@@ -139,6 +139,7 @@ NINJA=1.13.2
 GRADLE=8.13
 JDK=21
 MOLTENVK=1.4.2
+VULKAN_SDK=1.4.357        # loader + 校验层，见下面 vulkan-sdk 组件的说明
 LLVM_MINGW=20250910
 SDL=3.4.14
 VULKAN_HEADERS=1.4.313
@@ -222,8 +223,31 @@ fetch android-ndk "$NDK" linux-x86_64    "$DL/android-ndk-$NDK_FILE-linux.zip"  
 fetch android-ndk "$NDK" windows-x86_64  "$DL/android-ndk-$NDK_FILE-windows.zip" "android/sdk/ndk/$NDK"
 
 # --- Apple 平台的 Vulkan 实现 ------------------------------------------------
+# 这里取的是 MoltenVK 的完整包，iOS 构建要用里面的静态库（static/）。
+# 桌面 macOS 运行时用的那个 dylib 由下面的 vulkan-sdk 组件提供，版本和
+# loader、校验层对齐。
 fetch moltenvk "$MOLTENVK" macos-arm64  "$GH/KhronosGroup/MoltenVK/releases/download/v$MOLTENVK/MoltenVK-all.tar" tools/moltenvk MoltenVK/MoltenVK
 fetch moltenvk "$MOLTENVK" macos-x86_64 "$GH/KhronosGroup/MoltenVK/releases/download/v$MOLTENVK/MoltenVK-all.tar" tools/moltenvk MoltenVK/MoltenVK
+
+# --- Vulkan loader 与校验层 --------------------------------------------------
+# 校验层是 Debug 构建能报出「你用错了 Vulkan」的唯一途径，它不在显卡驱动里，
+# 必须自己分发。上游只有 LunarG 的整包（每平台 274~493 MB，而且 macOS /
+# Windows 版是跑不动的 Qt 安装器），所以由 .github/workflows/vulkan-sdk.yml
+# 挑出需要的几个文件重打包成几十 MB，发到一个单独的 Release。
+# LunarG 不提供 Linux ARM64，那个平台在同一个 workflow 里从源码构建。
+# loader 和校验层都是 Apache-2.0。
+#
+# 各平台拿到的东西不一样：
+#   macOS            loader + MoltenVK dylib + 校验层（这平台什么都没有）
+#   Linux / Windows  只有校验层，loader 和 ICD 由显卡驱动提供
+# macOS 的库是 universal，两个平台共用一个包（fetch 会自动去重）。
+VKSDK="$GH/ozongzi/vkx/releases/download/vulkan-sdk-$VULKAN_SDK/vulkan-sdk-$VULKAN_SDK"
+fetch vulkan-sdk "$VULKAN_SDK" macos-arm64      "$VKSDK-macos-universal.tar.gz" tools/vulkan
+fetch vulkan-sdk "$VULKAN_SDK" macos-x86_64     "$VKSDK-macos-universal.tar.gz" tools/vulkan
+fetch vulkan-sdk "$VULKAN_SDK" linux-x86_64     "$VKSDK-linux-x86_64.tar.gz"    tools/vulkan
+fetch vulkan-sdk "$VULKAN_SDK" linux-aarch64    "$VKSDK-linux-aarch64.tar.gz"   tools/vulkan
+fetch vulkan-sdk "$VULKAN_SDK" windows-x86_64   "$VKSDK-windows-x86_64.tar.gz"  tools/vulkan
+fetch vulkan-sdk "$VULKAN_SDK" windows-aarch64  "$VKSDK-windows-aarch64.tar.gz" tools/vulkan
 
 # --- Windows 上自带的 C++ 工具链（免装 Visual Studio）------------------------
 fetch llvm-mingw "$LLVM_MINGW" windows-x86_64  "$GH/mstorsjo/llvm-mingw/releases/download/$LLVM_MINGW/llvm-mingw-$LLVM_MINGW-ucrt-x86_64.zip"  tools/llvm-mingw

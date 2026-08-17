@@ -185,11 +185,26 @@ EOF
 cat >> "$ENV_FILE" <<'EOF'
 export PATH="$VKX_HOME/bin:$VKX_HOME/tools/cmake/bin:$VKX_HOME/tools/ninja:$VKX_HOME/tools/slang/bin:$VKX_HOME/tools/gradle/bin:$ANDROID_HOME/platform-tools:$JAVA_HOME/bin:$PATH"
 EOF
+# Vulkan 的运行期配置。三个变量都不是 DYLD_ 开头的，这一点是有意的：
+# macOS 的 SIP 会在执行系统二进制时把 DYLD_* 全部剥掉，所以只要中间隔了一层
+# /bin/sh（Makefile、npm script、CI 都会），靠 DYLD_LIBRARY_PATH 找库的方案就失效。
+#
+# 校验层的 json 里 library_path 写的是相对路径，loader 按 json 所在目录解析，
+# 所以库本身不需要任何搜索路径。
+cat >> "$ENV_FILE" <<'EOF'
+
+# 校验层：Debug 构建靠它报出用错 Vulkan 的地方。ADD 而不是覆盖，
+# 机器上原有的层（RenderDoc 之类）照旧可用。
+export VK_ADD_LAYER_PATH="$VKX_HOME/tools/vulkan/share/vulkan/explicit_layer.d${VK_ADD_LAYER_PATH:+:$VK_ADD_LAYER_PATH}"
+EOF
 if [ "$OS" = macos ]; then
-    # 开发期直接跑构建出来的可执行文件时，靠这个变量找到 MoltenVK。
-    # （打包成 .app 之后不需要它：SDL 会去包内的 Frameworks 里找。）
+    # macOS 是唯一连 loader 都没有的平台（Windows/Linux 的 loader 由驱动提供）。
+    # SDL 默认会按名字搜索 libvulkan，搜不到就退而直接加载 MoltenVK——那样就绕过了
+    # loader，校验层也就无从插入。用绝对路径明确指定 loader，把这条链补全：
+    #   程序 -> libvulkan.1.dylib -> 校验层 -> MoltenVK
     cat >> "$ENV_FILE" <<'EOF'
-export DYLD_LIBRARY_PATH="$VKX_HOME/tools/moltenvk/dylib/macOS${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+export SDL_VULKAN_LIBRARY="$VKX_HOME/tools/vulkan/lib/libvulkan.1.dylib"
+export VK_DRIVER_FILES="$VKX_HOME/tools/vulkan/share/vulkan/icd.d/MoltenVK_icd.json"
 EOF
 fi
 
