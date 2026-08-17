@@ -21,7 +21,7 @@
 #include <vector>
 
 // 在一组扩展属性里查名字。
-inline bool hasExtension(const std::vector<VkExtensionProperties>& available, const char* name)
+inline bool has_extension(const std::vector<VkExtensionProperties>& available, const char* name)
 {
     return std::any_of(available.begin(), available.end(), [name](const VkExtensionProperties& e) {
         return SDL_strcmp(e.extensionName, name) == 0;

@@ -51,7 +51,7 @@
 #include <vector>
 
 // CPU 最多领先 GPU 几帧。2 表示录制下一帧的同时，GPU 还在画上一帧。
-constexpr uint32_t kFramesInFlight = 2;
+constexpr uint32_t FRAMES_IN_FLIGHT = 2;
 
 class Application {
 public:
@@ -69,70 +69,70 @@ public:
 
 private:
     // ---- init() 依次调用这几个，每个对应上面文件清单里的一个 .cpp ----
-    bool initPlatform();          // platform.cpp
-    bool createInstance();        // instance.cpp
-    bool createDebugMessenger();  // debug.cpp
-    bool createSurface();         // surface.cpp
-    bool pickPhysicalDevice();    // device.cpp
-    bool createDevice();          // device.cpp
-    bool createSwapchain();       // swapchain.cpp
-    bool createVertexBuffer();    // vertex_buffer.cpp
-    bool createPipeline();        // pipeline.cpp
-    bool createFrameResources();  // frame.cpp
+    bool init_platform();          // platform.cpp
+    bool create_instance();        // instance.cpp
+    bool create_debug_messenger();  // debug.cpp
+    bool create_surface();         // surface.cpp
+    bool pick_physical_device();    // device.cpp
+    bool create_device();          // device.cpp
+    bool create_swapchain();       // swapchain.cpp
+    bool create_vertex_buffer();    // vertex_buffer.cpp
+    bool create_pipeline();        // pipeline.cpp
+    bool create_frame_resources();  // frame.cpp
     // 新增一类资源（纹理、uniform 缓冲……）时，在这里加一个 createXxx()，
     // 把它接进 app.cpp 里 init() 的调用链，并在 ~Application() 里加上对应的销毁。
 
     // ---- 运行期用的 ----
-    void destroySwapchain();      // swapchain.cpp
-    bool recreateSwapchain();     // swapchain.cpp
-    bool drawFrame();             // draw.cpp
-    bool recordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex);   // draw.cpp
+    void destroy_swapchain();      // swapchain.cpp
+    bool recreate_swapchain();     // swapchain.cpp
+    bool draw_frame();             // draw.cpp
+    bool record_command_buffer(VkCommandBuffer cmd, uint32_t image_index);   // draw.cpp
 
     // ---- 通用零件，跟画什么无关 ----
-    bool createShaderModule(const unsigned char* code, size_t size, VkShaderModule* out);  // shader.cpp
-    bool findMemoryType(uint32_t typeBits, VkMemoryPropertyFlags wanted, uint32_t* out);   // memory.cpp
+    bool create_shader_module(const unsigned char* code, size_t size, VkShaderModule* out);  // shader.cpp
+    bool find_memory_type(uint32_t type_bits, VkMemoryPropertyFlags wanted, uint32_t* out);   // memory.cpp
 
-    SDL_Window* window_ = nullptr;
-    bool running_ = true;
-    bool swapchainDirty_ = false;   // 窗口尺寸变了，下一帧前要重建交换链
+    SDL_Window* window = nullptr;
+    bool running = true;
+    bool swapchain_dirty = false;   // 窗口尺寸变了，下一帧前要重建交换链
 
     // 全局对象：一个进程一份
-    VkInstance instance_ = VK_NULL_HANDLE;
-    bool validationEnabled_ = false;                 // 实例是否真的挂上了校验层
-    bool colorSpaceExtEnabled_ = false;              // 实例是否真的启用了广色域扩展
-    VkSurfaceKHR surface_ = VK_NULL_HANDLE;          // 窗口在 Vulkan 里的代表
-    VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
-    uint32_t queueFamily_ = 0;                       // 同时支持图形和呈现的队列族
-    bool needsPortabilitySubset_ = false;
-    VkDevice device_ = VK_NULL_HANDLE;               // 逻辑设备，后面所有调用都要它
-    VkQueue queue_ = VK_NULL_HANDLE;
+    VkInstance instance = VK_NULL_HANDLE;
+    bool validation_enabled = false;                 // 实例是否真的挂上了校验层
+    bool color_space_ext_enabled = false;              // 实例是否真的启用了广色域扩展
+    VkSurfaceKHR surface = VK_NULL_HANDLE;          // 窗口在 Vulkan 里的代表
+    VkPhysicalDevice physical_device = VK_NULL_HANDLE;
+    uint32_t queue_family = 0;                       // 同时支持图形和呈现的队列族
+    bool needs_portability_subset = false;
+    VkDevice device = VK_NULL_HANDLE;               // 逻辑设备，后面所有调用都要它
+    VkQueue queue = VK_NULL_HANDLE;
 
     // 交换链：一组等着被画、被显示的图像。窗口尺寸变化时整组重建。
-    VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
-    VkFormat swapchainFormat_ = VK_FORMAT_UNDEFINED;
-    VkColorSpaceKHR swapchainColorSpace_ = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
-    vkx::Gamut gamut_ = vkx::Gamut::Srgb;            // 输出色域，颜色要按它换算
-    VkExtent2D swapchainExtent_ = {0, 0};
-    std::vector<VkImage> swapchainImages_;
-    std::vector<VkImageView> swapchainViews_;
-    std::vector<VkSemaphore> renderFinished_;   // 每张交换链图像一个
+    VkSwapchainKHR swapchain = VK_NULL_HANDLE;
+    VkFormat swapchain_format = VK_FORMAT_UNDEFINED;
+    VkColorSpaceKHR swapchain_color_space = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+    vkx::Gamut gamut = vkx::Gamut::Srgb;            // 输出色域，颜色要按它换算
+    VkExtent2D swapchain_extent = {0, 0};
+    std::vector<VkImage> swapchain_images;
+    std::vector<VkImageView> swapchain_views;
+    std::vector<VkSemaphore> render_finished;   // 每张交换链图像一个
 
     // 场景数据
-    VkBuffer vertexBuffer_ = VK_NULL_HANDLE;
-    VkDeviceMemory vertexMemory_ = VK_NULL_HANDLE;
+    VkBuffer vertex_buffer = VK_NULL_HANDLE;
+    VkDeviceMemory vertex_memory = VK_NULL_HANDLE;
 
     // 管线：着色器 + 固定功能状态打包成的一个不可变对象
-    VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
-    VkPipeline pipeline_ = VK_NULL_HANDLE;
+    VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
+    VkPipeline pipeline = VK_NULL_HANDLE;
 
     // 每帧一份，让 CPU 和 GPU 能并行工作
-    VkCommandPool commandPool_ = VK_NULL_HANDLE;
-    VkCommandBuffer commandBuffers_[kFramesInFlight] = {};
-    VkSemaphore imageAvailable_[kFramesInFlight] = {};
-    VkFence inFlight_[kFramesInFlight] = {};
-    uint32_t frame_ = 0;                        // 当前用第几套每帧资源
+    VkCommandPool command_pool = VK_NULL_HANDLE;
+    VkCommandBuffer command_buffers[FRAMES_IN_FLIGHT] = {};
+    VkSemaphore image_available[FRAMES_IN_FLIGHT] = {};
+    VkFence in_flight[FRAMES_IN_FLIGHT] = {};
+    uint32_t frame = 0;                        // 当前用第几套每帧资源
 
 #if VKX_DEBUG
-    VkDebugUtilsMessengerEXT debugMessenger_ = VK_NULL_HANDLE;
+    VkDebugUtilsMessengerEXT debug_messenger = VK_NULL_HANDLE;
 #endif
 };

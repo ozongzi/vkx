@@ -3,7 +3,7 @@
 
 namespace vkx {
 
-const char* gamutName(Gamut gamut)
+const char* gamut_name(Gamut gamut)
 {
     switch (gamut) {
     case Gamut::DisplayP3: return "Display P3";

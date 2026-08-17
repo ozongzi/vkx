@@ -10,13 +10,13 @@
 #include "app.h"
 #include "error.h"
 
-bool Application::createSurface()
+bool Application::create_surface()
 {
     // 平台差异由 SDL 承担，这一句在五个平台上都能用。不用 SDL 的话，
     // Windows 要调 vkCreateWin32SurfaceKHR，macOS 要先建 CAMetalLayer
     // 再调 vkCreateMetalSurfaceEXT，每个平台各写一份。
-    if (!SDL_Vulkan_CreateSurface(window_, instance_, nullptr, &surface_)) {
-        reportError("SDL_Vulkan_CreateSurface 失败: %s", SDL_GetError());
+    if (!SDL_Vulkan_CreateSurface(window, instance, nullptr, &surface)) {
+        report_error("SDL_Vulkan_CreateSurface 失败: %s", SDL_GetError());
         return false;
     }
     return true;

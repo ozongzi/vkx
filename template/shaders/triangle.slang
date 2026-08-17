@@ -26,11 +26,11 @@ struct VertexOutput {
 // 转换放在这里而不是片元着色器：颜色是逐顶点的，这里一个顶点只算一次，
 // 放到片元着色器就要每个像素算一次。
 [shader("vertex")]
-VertexOutput vertexMain(VertexInput input)
+VertexOutput vertex_main(VertexInput input)
 {
     VertexOutput output;
     output.position = float4(input.position, 0.0, 1.0);
-    output.color    = oklchToLinearRgb(input.oklch);
+    output.color    = oklch_to_linear_rgb(input.oklch);
     return output;
 }
 
@@ -40,7 +40,7 @@ VertexOutput vertexMain(VertexInput input)
 // 注意插值发生在 linear RGB 上，不是 OKLCH 上。做小范围渐变没问题；真要让渐变
 // 在感知上均匀（比如蓝到黄不经过灰），得把 OKLCH 传下来在这里逐像素转。
 [shader("fragment")]
-float4 fragmentMain(VertexOutput input) : SV_Target
+float4 fragment_main(VertexOutput input) : SV_Target
 {
     return float4(input.color, 1.0);
 }

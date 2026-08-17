@@ -181,14 +181,14 @@ endif()
 
 vkx_add_slang_shader(${VKX_TARGET}
     SOURCE shaders/triangle.slang
-    ENTRY  vertexMain
+    ENTRY  vertex_main
     STAGE  vertex
-    VAR    kTriangleVertSpv
+    VAR    TRIANGLE_VERT_SPV
     HEADER triangle_vert.spv.h)
 
 vkx_add_slang_shader(${VKX_TARGET}
     SOURCE shaders/triangle.slang
-    ENTRY  fragmentMain
+    ENTRY  fragment_main
     STAGE  fragment
-    VAR    kTriangleFragSpv
+    VAR    TRIANGLE_FRAG_SPV
     HEADER triangle_frag.spv.h)

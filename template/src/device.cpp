@@ -5,18 +5,18 @@
 // 从所有显卡里挑一块能用的，并记下它可用的队列族。
 // 筛选条件：Vulkan 1.3、支持交换链、支持 dynamicRendering 与 synchronization2、
 // 有一个同时能图形和呈现的队列族。多块显卡时优先独显。
-bool Application::pickPhysicalDevice()
+bool Application::pick_physical_device()
 {
-    uint32_t deviceCount = 0;
-    VKX_CHECK(vkEnumeratePhysicalDevices(instance_, &deviceCount, nullptr));
-    if (deviceCount == 0) {
-        reportError("没有找到任何支持 Vulkan 的显卡。");
+    uint32_t device_count = 0;
+    VKX_CHECK(vkEnumeratePhysicalDevices(instance, &device_count, nullptr));
+    if (device_count == 0) {
+        report_error("没有找到任何支持 Vulkan 的显卡。");
         return false;
     }
-    std::vector<VkPhysicalDevice> devices(deviceCount);
-    VKX_CHECK(vkEnumeratePhysicalDevices(instance_, &deviceCount, devices.data()));
+    std::vector<VkPhysicalDevice> devices(device_count);
+    VKX_CHECK(vkEnumeratePhysicalDevices(instance, &device_count, devices.data()));
 
-    int bestScore = -1;
+    int best_score = -1;
     for (VkPhysicalDevice candidate : devices) {
         VkPhysicalDeviceProperties props{};
         vkGetPhysicalDeviceProperties(candidate, &props);
@@ -25,11 +25,11 @@ bool Application::pickPhysicalDevice()
         }
 
         // 交换链是扩展功能，不是核心的一部分，要单独查。
-        uint32_t extCount = 0;
-        vkEnumerateDeviceExtensionProperties(candidate, nullptr, &extCount, nullptr);
-        std::vector<VkExtensionProperties> exts(extCount);
-        vkEnumerateDeviceExtensionProperties(candidate, nullptr, &extCount, exts.data());
-        if (!hasExtension(exts, VK_KHR_SWAPCHAIN_EXTENSION_NAME)) {
+        uint32_t ext_count = 0;
+        vkEnumerateDeviceExtensionProperties(candidate, nullptr, &ext_count, nullptr);
+        std::vector<VkExtensionProperties> exts(ext_count);
+        vkEnumerateDeviceExtensionProperties(candidate, nullptr, &ext_count, exts.data());
+        if (!has_extension(exts, VK_KHR_SWAPCHAIN_EXTENSION_NAME)) {
             continue;
         }
 
@@ -45,43 +45,43 @@ bool Application::pickPhysicalDevice()
         }
         // 需要别的特性（几何着色器、光追……）时，在这里一并检查。
 
-        uint32_t familyCount = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(candidate, &familyCount, nullptr);
-        std::vector<VkQueueFamilyProperties> families(familyCount);
-        vkGetPhysicalDeviceQueueFamilyProperties(candidate, &familyCount, families.data());
+        uint32_t family_count = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(candidate, &family_count, nullptr);
+        std::vector<VkQueueFamilyProperties> families(family_count);
+        vkGetPhysicalDeviceQueueFamilyProperties(candidate, &family_count, families.data());
 
         // 找一个既能画又能呈现的队列族，用它一个就够。
-        for (uint32_t i = 0; i < familyCount; ++i) {
+        for (uint32_t i = 0; i < family_count; ++i) {
             if ((families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) == 0) {
                 continue;
             }
-            VkBool32 presentSupported = VK_FALSE;
-            vkGetPhysicalDeviceSurfaceSupportKHR(candidate, i, surface_, &presentSupported);
-            if (!presentSupported) {
+            VkBool32 present_supported = VK_FALSE;
+            vkGetPhysicalDeviceSurfaceSupportKHR(candidate, i, surface, &present_supported);
+            if (!present_supported) {
                 continue;
             }
 
             int score = (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) ? 1000 : 100;
-            if (score > bestScore) {
-                bestScore = score;
-                physicalDevice_ = candidate;
-                queueFamily_ = i;
+            if (score > best_score) {
+                best_score = score;
+                physical_device = candidate;
+                queue_family = i;
                 // Apple 平台的设备会带这个扩展，创建逻辑设备时必须一起启用。
-                needsPortabilitySubset_ = hasExtension(exts, "VK_KHR_portability_subset");
+                needs_portability_subset = has_extension(exts, "VK_KHR_portability_subset");
             }
             break;
         }
     }
 
-    if (physicalDevice_ == VK_NULL_HANDLE) {
-        reportError("没有满足要求的显卡。\n\n"
+    if (physical_device == VK_NULL_HANDLE) {
+        report_error("没有满足要求的显卡。\n\n"
                     "本工程需要 Vulkan 1.3，并支持 dynamicRendering 与 synchronization2。\n"
                     "请先更新显卡驱动；若显卡确实过旧，需改用 VkRenderPass 的写法。");
         return false;
     }
 
     VkPhysicalDeviceProperties props{};
-    vkGetPhysicalDeviceProperties(physicalDevice_, &props);
+    vkGetPhysicalDeviceProperties(physical_device, &props);
     SDL_Log("vkx: 使用显卡 %s (Vulkan %u.%u.%u)", props.deviceName,
             VK_API_VERSION_MAJOR(props.apiVersion),
             VK_API_VERSION_MINOR(props.apiVersion),
@@ -91,19 +91,19 @@ bool Application::pickPhysicalDevice()
 
 // 创建逻辑设备（VkDevice）和一个队列。
 // 逻辑设备是显卡的「使用许可」：只有在这里启用过的扩展和特性才能用。
-bool Application::createDevice()
+bool Application::create_device()
 {
     const float priority = 1.0f;
-    VkDeviceQueueCreateInfo queueInfo{};
-    queueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queueInfo.queueFamilyIndex = queueFamily_;
-    queueInfo.queueCount = 1;
-    queueInfo.pQueuePriorities = &priority;
+    VkDeviceQueueCreateInfo queue_info{};
+    queue_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    queue_info.queueFamilyIndex = queue_family;
+    queue_info.queueCount = 1;
+    queue_info.pQueuePriorities = &priority;
 
-    std::vector<const char*> deviceExtensions{VK_KHR_SWAPCHAIN_EXTENSION_NAME};
-    if (needsPortabilitySubset_) {
+    std::vector<const char*> device_extensions{VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+    if (needs_portability_subset) {
         // 规范规定：设备暴露了这个扩展就必须启用它。
-        deviceExtensions.push_back("VK_KHR_portability_subset");
+        device_extensions.push_back("VK_KHR_portability_subset");
     }
     // 需要别的设备扩展，在这里 push_back。
 
@@ -117,20 +117,20 @@ bool Application::createDevice()
     features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
     features.pNext = &features13;
 
-    VkDeviceCreateInfo deviceInfo{};
-    deviceInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    deviceInfo.pNext = &features;
-    deviceInfo.queueCreateInfoCount = 1;
-    deviceInfo.pQueueCreateInfos = &queueInfo;
-    deviceInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
-    deviceInfo.ppEnabledExtensionNames = deviceExtensions.data();
+    VkDeviceCreateInfo device_info{};
+    device_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    device_info.pNext = &features;
+    device_info.queueCreateInfoCount = 1;
+    device_info.pQueueCreateInfos = &queue_info;
+    device_info.enabledExtensionCount = static_cast<uint32_t>(device_extensions.size());
+    device_info.ppEnabledExtensionNames = device_extensions.data();
 
-    VKX_CHECK(vkCreateDevice(physicalDevice_, &deviceInfo, nullptr, &device_));
+    VKX_CHECK(vkCreateDevice(physical_device, &device_info, nullptr, &device));
 
 #if !defined(VKX_STATIC_VULKAN)
     // 换成这台设备专用的函数指针，调用时少一层 loader 转发。
-    volkLoadDevice(device_);
+    volkLoadDevice(device);
 #endif
-    vkGetDeviceQueue(device_, queueFamily_, 0, &queue_);
+    vkGetDeviceQueue(device, queue_family, 0, &queue);
     return true;
 }

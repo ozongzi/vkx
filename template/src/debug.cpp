@@ -17,7 +17,7 @@ namespace {
 // 返回值 VK_FALSE 表示这条消息已经处理完，引发它的那次 Vulkan 调用照常继续。
 // 返回 VK_TRUE 会让那次调用直接失败，那是校验层自测用的，应用程序一律返回
 // VK_FALSE。
-VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
+VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
                                              VkDebugUtilsMessageTypeFlagsEXT,
                                              const VkDebugUtilsMessengerCallbackDataEXT* data,
                                              void*)
@@ -34,31 +34,31 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBits
 }  // namespace
 #endif
 
-// 把上面那个 debugCallback 注册给校验层。
-bool Application::createDebugMessenger()
+// 把上面那个 debug_callback 注册给校验层。
+bool Application::create_debug_messenger()
 {
 #if VKX_DEBUG
     // 实例创建时没挂上校验层（比如没装 Vulkan SDK），这里就没什么可注册的。
     // 强行调用 vkCreateDebugUtilsMessengerEXT 会因为扩展没启用而崩。
-    if (!validationEnabled_) {
+    if (!validation_enabled) {
         return true;
     }
 
-    VkDebugUtilsMessengerCreateInfoEXT messengerInfo{};
-    messengerInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+    VkDebugUtilsMessengerCreateInfoEXT messenger_info{};
+    messenger_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
     // 想收哪些严重程度的消息。
-    messengerInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT
+    messenger_info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT
                                   | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
     // 想收哪几类消息：一般信息、规范违规、性能建议。
-    messengerInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT
+    messenger_info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT
                               | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT
                               | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-    messengerInfo.pfnUserCallback = debugCallback;
+    messenger_info.pfnUserCallback = debug_callback;
 
     // 这里故意不用 VKX_CHECK：messenger 只是个调试辅助，建不出来
-    // 也不该让程序起不来。失败的话 debugMessenger_ 保持 VK_NULL_HANDLE，
+    // 也不该让程序起不来。失败的话 debug_messenger 保持 VK_NULL_HANDLE，
     // 析构时的判空会跳过它。
-    vkCreateDebugUtilsMessengerEXT(instance_, &messengerInfo, nullptr, &debugMessenger_);
+    vkCreateDebugUtilsMessengerEXT(instance, &messenger_info, nullptr, &debug_messenger);
 #endif
     return true;
 }

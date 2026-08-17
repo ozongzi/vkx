@@ -25,10 +25,10 @@
 // 交换链会尽量输出到显示器支持的最宽色域（见 src/swapchain.cpp）。选中哪个之后
 // 整个程序生命周期都不会变，所以用 specialization constant：创建管线时把这个值
 // 填进去，驱动编译着色器时会把下面那些 if 直接折叠掉，运行期一条分支都不剩。
-[[vk::constant_id(0)]] const uint kGamut = 0;   // 0 = sRGB, 1 = Display P3
+[[vk::constant_id(0)]] const uint GAMUT = 0;   // 0 = sRGB, 1 = Display P3
 
 // OKLCH -> Oklab。极坐标转直角坐标，就这两行。
-float3 oklchToOklab(float3 oklch)
+float3 oklch_to_oklab(float3 oklch)
 {
     float h = radians(oklch.z);   // 色相存的是度，三角函数要弧度
     return float3(oklch.x, oklch.y * cos(h), oklch.y * sin(h));
@@ -41,7 +41,7 @@ float3 oklchToOklab(float3 oklch)
 //
 // 第一组系数出自 Björn Ottosson 的 Oklab 原始实现。两组矩阵都可以自己推：把对应
 // 色域的基色坐标和 D65 白点算出 RGB->XYZ，取逆，再接上 XYZ->LMS 的逆。
-float3 oklabToLinearRgb(float3 lab)
+float3 oklab_to_linear_rgb(float3 lab)
 {
     float l_ = lab.x + 0.3963377774 * lab.y + 0.2158037573 * lab.z;
     float m_ = lab.x - 0.1055613458 * lab.y - 0.0638541728 * lab.z;
@@ -51,7 +51,7 @@ float3 oklabToLinearRgb(float3 lab)
     float m = m_ * m_ * m_;
     float s = s_ * s_ * s_;
 
-    if (kGamut == 1) {
+    if (GAMUT == 1) {
         // LMS -> linear Display P3
         return float3(
             +3.1281105290 * l - 2.2570750184 * m + 0.1293047884 * s,
@@ -66,7 +66,7 @@ float3 oklabToLinearRgb(float3 lab)
 }
 
 // 这个 RGB 是不是落在色域里（三个通道都在 0 到 1 之间）。
-bool inGamut(float3 rgb)
+bool in_gamut(float3 rgb)
 {
     return all(rgb >= -1e-4) && all(rgb <= 1.0 + 1e-4);
 }
@@ -85,10 +85,10 @@ bool inGamut(float3 rgb)
 //
 // 找那个临界 C 用二分：色域是凸的，「在不在色域内」关于 C 单调，所以二分必然收敛。
 // 每次迭代就是一次矩阵乘，而这个函数在顶点着色器里每个图形只跑几次，代价可以忽略。
-float3 oklchToLinearRgb(float3 oklch)
+float3 oklch_to_linear_rgb(float3 oklch)
 {
-    float3 rgb = oklabToLinearRgb(oklchToOklab(oklch));
-    if (inGamut(rgb)) {
+    float3 rgb = oklab_to_linear_rgb(oklch_to_oklab(oklch));
+    if (in_gamut(rgb)) {
         return rgb;
     }
 
@@ -97,7 +97,7 @@ float3 oklchToLinearRgb(float3 oklch)
     float hi = oklch.y;
     for (int i = 0; i < 16; ++i) {
         float mid = 0.5 * (lo + hi);
-        if (inGamut(oklabToLinearRgb(oklchToOklab(float3(oklch.x, mid, oklch.z))))) {
+        if (in_gamut(oklab_to_linear_rgb(oklch_to_oklab(float3(oklch.x, mid, oklch.z))))) {
             lo = mid;
         } else {
             hi = mid;
@@ -105,5 +105,5 @@ float3 oklchToLinearRgb(float3 oklch)
     }
 
     // 用 lo（确定在色域内的那一侧）。saturate 只是抹掉二分留下的浮点毛刺。
-    return saturate(oklabToLinearRgb(oklchToOklab(float3(oklch.x, lo, oklch.z))));
+    return saturate(oklab_to_linear_rgb(oklch_to_oklab(float3(oklch.x, lo, oklch.z))));
 }

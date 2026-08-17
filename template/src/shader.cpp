@@ -14,7 +14,7 @@
 // VkShaderModule 只是字节码的一层薄包装，本身不做任何编译。
 // 真正的编译发生在 vkCreateGraphicsPipelines：那时驱动才知道
 // 完整的固定功能状态，能一起优化。所以管线一建好，模块就可以立刻销毁了。
-bool Application::createShaderModule(const unsigned char* code, size_t size, VkShaderModule* out)
+bool Application::create_shader_module(const unsigned char* code, size_t size, VkShaderModule* out)
 {
     VkShaderModuleCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -22,6 +22,6 @@ bool Application::createShaderModule(const unsigned char* code, size_t size, VkS
     // pCode 要求按 4 字节对齐（SPIR-V 是 32 位字的序列）。
     // 生成的头文件里那个数组带了 alignas(uint32_t)，所以这个 cast 是安全的。
     info.pCode = reinterpret_cast<const uint32_t*>(code);
-    VKX_CHECK(vkCreateShaderModule(device_, &info, nullptr, out));
+    VKX_CHECK(vkCreateShaderModule(device, &info, nullptr, out));
     return true;
 }

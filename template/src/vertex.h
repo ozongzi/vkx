@@ -6,7 +6,7 @@
 
 #include <cstddef>
 
-// 一个顶点的内存布局。改这里要同步改 createPipeline() 里的属性描述，
+// 一个顶点的内存布局。改这里要同步改 create_pipeline() 里的属性描述，
 // 以及 shaders/triangle.slang 里的 VertexInput。
 struct Vertex {
     float position[2];  // 裁剪空间坐标，范围 [-1, 1]，Y 轴向下
@@ -24,7 +24,7 @@ struct Vertex {
 //
 // 彩度给到 0.30 是刻意的：它超出了 sRGB 在某些色相上能表达的范围。在广色域屏幕
 // 上你会看到更鲜的颜色，在 sRGB 屏幕上则被自动映射到该色相最鲜的位置。
-constexpr Vertex kVertices[] = {
+constexpr Vertex VERTICES[] = {
     {{ 0.0f, -0.6f}, {0.65f, 0.30f,  25.0f}},   // 上，红
     {{ 0.6f,  0.6f}, {0.65f, 0.30f, 145.0f}},   // 右下，绿
     {{-0.6f,  0.6f}, {0.65f, 0.30f, 265.0f}},   // 左下，蓝

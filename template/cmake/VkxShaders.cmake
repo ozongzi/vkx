@@ -3,9 +3,9 @@
 # 用法：
 #   vkx_add_slang_shader(<target>
 #       SOURCE shaders/triangle.slang   # 着色器源文件
-#       ENTRY  vertexMain               # 入口函数名
+#       ENTRY  vertex_main               # 入口函数名
 #       STAGE  vertex                   # 着色器阶段：vertex / fragment / compute ...
-#       VAR    kTriangleVertSpv         # 生成的 C 数组变量名
+#       VAR    TRIANGLE_VERT_SPV         # 生成的 C 数组变量名
 #       [HEADER triangle_vert.spv.h])   # 生成的头文件名，默认是 <VAR>.h
 #
 # 生成的头文件里是一个 4 字节对齐的字节数组和它的长度，

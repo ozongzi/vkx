@@ -13,7 +13,7 @@
 namespace {
 
 // 标准错误是不是接在终端上。
-bool stderrIsTerminal()
+bool stderr_is_terminal()
 {
 #if defined(_WIN32)
     return _isatty(_fileno(stderr)) != 0;
@@ -28,7 +28,7 @@ bool stderrIsTerminal()
 //
 // 弹窗只在没有终端可看的时候出现（双击运行、手机上）。有终端时不弹，
 // 因为模态窗口在 CI 或脚本里没人点，会把进程一直挂住。
-void reportError(const char* format, ...)
+void report_error(const char* format, ...)
 {
     char message[1024];
     va_list args;
@@ -38,13 +38,13 @@ void reportError(const char* format, ...)
 
     SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "%s", message);
 
-    if (!stderrIsTerminal()) {
+    if (!stderr_is_terminal()) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "{{PROJECT_NAME}}", message, nullptr);
     }
 }
 
 // 把 VkResult 转成可读的名字，用于错误信息。
-const char* vkResultName(VkResult result)
+const char* vk_result_name(VkResult result)
 {
     switch (result) {
     case VK_SUCCESS:                        return "VK_SUCCESS";

@@ -17,21 +17,21 @@
 //   要有交换链，才知道图像格式，管线才能建（管线要写死附件格式）。
 //
 // `&&` 会短路：任何一步返回 false，后面的调用都不再执行，init() 直接
-// 返回 false。出错的那一步已经在自己内部 reportError 过了。
+// 返回 false。出错的那一步已经在自己内部 report_error 过了。
 //
 // 加新资源在链子末尾加一行，同时在下面的析构函数里加上对应的销毁。
 bool Application::init()
 {
-    return initPlatform()          // platform.cpp   SDL、Vulkan 运行时、窗口
-        && createInstance()        // instance.cpp   VkInstance
-        && createDebugMessenger()  // debug.cpp      校验层的消息出口
-        && createSurface()         // surface.cpp    窗口 -> VkSurfaceKHR
-        && pickPhysicalDevice()    // device.cpp     挑一块能用的显卡
-        && createDevice()          // device.cpp     逻辑设备 + 队列
-        && createSwapchain()       // swapchain.cpp  交换链及其图像
-        && createVertexBuffer()    // vertex_buffer.cpp
-        && createPipeline()        // pipeline.cpp
-        && createFrameResources(); // frame.cpp      命令缓冲、信号量、栅栏
+    return init_platform()          // platform.cpp   SDL、Vulkan 运行时、窗口
+        && create_instance()        // instance.cpp   VkInstance
+        && create_debug_messenger()  // debug.cpp      校验层的消息出口
+        && create_surface()         // surface.cpp    窗口 -> VkSurfaceKHR
+        && pick_physical_device()    // device.cpp     挑一块能用的显卡
+        && create_device()          // device.cpp     逻辑设备 + 队列
+        && create_swapchain()       // swapchain.cpp  交换链及其图像
+        && create_vertex_buffer()    // vertex_buffer.cpp
+        && create_pipeline()        // pipeline.cpp
+        && create_frame_resources(); // frame.cpp      命令缓冲、信号量、栅栏
 }
 
 // ---------------------------------------------------------------------------
@@ -41,26 +41,26 @@ bool Application::init()
 // 先把攒下的事件处理完，再画一帧。
 //
 // 这是「游戏循环」而不是「事件驱动」。SDL_PollEvent 是非阻塞的，没有事件
-// 就立刻返回 0，所以每一圈都会走到 drawFrame()，画面每帧都在重画。
+// 就立刻返回 0，所以每一圈都会走到 draw_frame()，画面每帧都在重画。
 // 给循环定节拍的是交换链的垂直同步（见 swapchain.cpp 里的 presentMode），
 // 不是 SDL。
 void Application::run()
 {
-    while (running_) {
+    while (running) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             switch (event.type) {
             case SDL_EVENT_QUIT:            // 关窗口 / 系统要求退出
-                running_ = false;
+                running = false;
                 break;
             case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:   // 尺寸变了，交换链要重建
-                // 这里只做个记号，不画也不重建。下一次 drawFrame() 开头
+                // 这里只做个记号，不画也不重建。下一次 draw_frame() 开头
                 // 看到这个标志才动手——事件处理和绘制保持解耦。
-                swapchainDirty_ = true;
+                swapchain_dirty = true;
                 break;
             case SDL_EVENT_KEY_DOWN:
                 if (event.key.key == SDLK_ESCAPE) {
-                    running_ = false;
+                    running = false;
                 }
                 break;
             // 鼠标、触摸、手柄等事件在这里加分支处理。
@@ -69,12 +69,12 @@ void Application::run()
             }
         }
 
-        if (!running_) {
+        if (!running) {
             break;
         }
         // 游戏逻辑的更新（移动、动画、网络同步）放在这一行之前。
-        if (!drawFrame()) {
-            running_ = false;
+        if (!draw_frame()) {
+            running = false;
         }
     }
 }
@@ -98,44 +98,44 @@ void Application::run()
 // 顶点缓冲。销毁一个 GPU 正在使用的对象是未定义行为，要先等它停下来。
 Application::~Application()
 {
-    if (device_ != VK_NULL_HANDLE) {
-        vkDeviceWaitIdle(device_);   // 等 GPU 用完这些对象再删
+    if (device != VK_NULL_HANDLE) {
+        vkDeviceWaitIdle(device);   // 等 GPU 用完这些对象再删
 
-        for (uint32_t i = 0; i < kFramesInFlight; ++i) {
-            vkDestroySemaphore(device_, imageAvailable_[i], nullptr);
-            vkDestroyFence(device_, inFlight_[i], nullptr);
+        for (uint32_t i = 0; i < FRAMES_IN_FLIGHT; ++i) {
+            vkDestroySemaphore(device, image_available[i], nullptr);
+            vkDestroyFence(device, in_flight[i], nullptr);
         }
-        vkDestroyCommandPool(device_, commandPool_, nullptr);   // 命令缓冲跟着池一起没
-        vkDestroyPipeline(device_, pipeline_, nullptr);
-        vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr);
-        vkDestroyBuffer(device_, vertexBuffer_, nullptr);
-        vkFreeMemory(device_, vertexMemory_, nullptr);
+        vkDestroyCommandPool(device, command_pool, nullptr);   // 命令缓冲跟着池一起没
+        vkDestroyPipeline(device, pipeline, nullptr);
+        vkDestroyPipelineLayout(device, pipeline_layout, nullptr);
+        vkDestroyBuffer(device, vertex_buffer, nullptr);
+        vkFreeMemory(device, vertex_memory, nullptr);
         // 新建的设备级对象（纹理、采样器、描述符池……）在这里一并销毁。
-        destroySwapchain();
-        vkDestroyDevice(device_, nullptr);
-        device_ = VK_NULL_HANDLE;
+        destroy_swapchain();
+        vkDestroyDevice(device, nullptr);
+        device = VK_NULL_HANDLE;
     }
 
     // 实例级的对象：它们不属于任何一块显卡，所以在设备之后才轮到。
-    if (instance_ != VK_NULL_HANDLE) {
-        if (surface_ != VK_NULL_HANDLE) {
-            vkDestroySurfaceKHR(instance_, surface_, nullptr);
+    if (instance != VK_NULL_HANDLE) {
+        if (surface != VK_NULL_HANDLE) {
+            vkDestroySurfaceKHR(instance, surface, nullptr);
         }
 #if VKX_DEBUG
-        if (debugMessenger_ != VK_NULL_HANDLE) {
+        if (debug_messenger != VK_NULL_HANDLE) {
             // 放在 vkDestroyInstance 之前，销毁实例时的报错才还能打印出来。
-            vkDestroyDebugUtilsMessengerEXT(instance_, debugMessenger_, nullptr);
+            vkDestroyDebugUtilsMessengerEXT(instance, debug_messenger, nullptr);
         }
 #endif
-        vkDestroyInstance(instance_, nullptr);
-        instance_ = VK_NULL_HANDLE;
+        vkDestroyInstance(instance, nullptr);
+        instance = VK_NULL_HANDLE;
     }
 
     // 最后收 SDL 那一侧。这两个函数在没初始化过时调用也是安全的，
     // 所以 init() 在第一步就失败时走到这里也不会有问题。
-    if (window_ != nullptr) {
-        SDL_DestroyWindow(window_);
-        window_ = nullptr;
+    if (window != nullptr) {
+        SDL_DestroyWindow(window);
+        window = nullptr;
     }
     SDL_Vulkan_UnloadLibrary();
     SDL_Quit();

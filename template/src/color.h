@@ -2,7 +2,7 @@
 //
 // 现在的显示器多数是广色域的（Apple 的屏幕、大部分新显示器都是 Display P3），
 // 能显示的颜色比 sRGB 多出一圈——最明显的是青绿一带，sRGB 里那点青色一直很憋屈。
-// 交换链会尽量输出到显示器支持的最宽色域，具体选中了哪个由 createSwapchain()
+// 交换链会尽量输出到显示器支持的最宽色域，具体选中了哪个由 create_swapchain()
 // 决定并记在这里，见 swapchain.cpp。
 //
 // 这件事对写颜色的人意味着什么：你填的 RGB 数值是相对当前输出色域的。在 P3 的
@@ -22,6 +22,6 @@ enum class Gamut {
 };
 
 // 色域的名字，用来打日志。
-const char* gamutName(Gamut gamut);
+const char* gamut_name(Gamut gamut);
 
 }  // namespace vkx

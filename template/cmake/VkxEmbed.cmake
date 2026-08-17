@@ -54,7 +54,7 @@ string(APPEND content "#pragma once\n\n")
 string(APPEND content "#include <cstddef>\n#include <cstdint>\n\n")
 string(APPEND content "alignas(uint32_t) static const unsigned char ${VKX_EMBED_VAR}[] = {\n")
 string(APPEND content "${body}\n};\n\n")
-string(APPEND content "static const size_t ${VKX_EMBED_VAR}_size = ${byte_count};\n")
+string(APPEND content "static const size_t ${VKX_EMBED_VAR}_SIZE = ${byte_count};\n")
 
 # 内容没变就不要重写，免得触发无谓的重新编译。
 set(previous "")
