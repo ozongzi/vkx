@@ -3,11 +3,8 @@
 // 三角形的顶点现在还只是 CPU 内存里的一个数组（见 vertex.h），
 // GPU 读不到。这一步把它变成一个 GPU 能访问的缓冲。
 #include "app.h"
-#include "color.h"
 #include "error.h"
 #include "vertex.h"
-
-#include <iterator>
 
 // 建一个顶点缓冲，把 kVertices 拷进去。
 //
@@ -57,21 +54,12 @@ bool Application::createVertexBuffer()
     VKX_CHECK(vkAllocateMemory(device_, &allocInfo, nullptr, &vertexMemory_));
     VKX_CHECK(vkBindBufferMemory(device_, vertexBuffer_, vertexMemory_, 0));
 
-    // kVertices 里的颜色是按线性 sRGB 写的，而交换链可能输出到 Display P3。
-    // 同一组数值在两套基色下是不同的颜色，所以上传前要换算一次，否则在广色域屏幕
-    // 上整个画面会过饱和。先拷一份改，别动那个 constexpr 原数据。
-    Vertex converted[std::size(kVertices)];
-    SDL_memcpy(converted, kVertices, sizeof(kVertices));
-    for (Vertex& v : converted) {
-        vkx::toGamut(gamut_, v.color);
-    }
-
     // 映射成一个普通的 CPU 指针，memcpy 进去，再解除映射。
     // 这些顶点建好之后就不会再变，所以映射完就可以撤掉；
     // 每帧都要改的数据（比如 UI）才需要一直映射着。
     void* mapped = nullptr;
     VKX_CHECK(vkMapMemory(device_, vertexMemory_, 0, size, 0, &mapped));
-    SDL_memcpy(mapped, converted, static_cast<size_t>(size));
+    SDL_memcpy(mapped, kVertices, static_cast<size_t>(size));
     vkUnmapMemory(device_, vertexMemory_);
     return true;
 }
