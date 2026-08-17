@@ -29,30 +29,56 @@ permissions:
 
 jobs:
   # ---------------------------------------------------------------------------
+  # 按 only_platforms 算出这次要跑哪些平台
+  # ---------------------------------------------------------------------------
+  # 为什么要单开一个 job：job 级的 if 在矩阵展开之前求值，里面引用不到
+  # matrix.platform，所以过滤不能写在 extract 上，只能先把矩阵本身算出来。
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      has_extract: ${{ steps.plan.outputs.has_extract }}
+      linux_arm: ${{ steps.plan.outputs.linux_arm }}
+    steps:
+      - id: plan
+        shell: bash
+        env:
+          ONLY: ${{ inputs.only_platforms }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+
+          # macOS 的库是 universal（x86_64 + arm64），一个包服务两个平台，
+          # 所以只跑一次，由 sync.sh 把它登记成两条清单记录。
+          ALL = [
+              {"os": "macos-14",       "platform": "macos-universal",  "lunarg": "mac"},
+              {"os": "ubuntu-latest",  "platform": "linux-x86_64",     "lunarg": "linux"},
+              {"os": "windows-latest", "platform": "windows-x86_64",   "lunarg": "windows"},
+              {"os": "windows-11-arm", "platform": "windows-aarch64",  "lunarg": "warm"},
+          ]
+          only = [s.strip() for s in os.environ.get("ONLY", "").split(",") if s.strip()]
+          picked = ALL if not only else [e for e in ALL if e["platform"] in only]
+          # linux-aarch64 不在上面的表里，它由另一个 job 从源码构建。
+          linux_arm = (not only) or ("linux-aarch64" in only)
+
+          print(f"matrix={json.dumps({'include': picked})}")
+          print(f"has_extract={'true' if picked else 'false'}")
+          print(f"linux_arm={'true' if linux_arm else 'false'}")
+          print("要跑的平台:", [e["platform"] for e in picked]
+                + (["linux-aarch64"] if linux_arm else []), file=__import__("sys").stderr)
+          PY
+
+  # ---------------------------------------------------------------------------
   # 从 LunarG 的整包里挑文件
   # ---------------------------------------------------------------------------
   extract:
     name: ${{ matrix.platform }}
     runs-on: ${{ matrix.os }}
-    if: inputs.only_platforms == '' || contains(inputs.only_platforms, matrix.platform)
+    needs: plan
+    if: needs.plan.outputs.has_extract == 'true'
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          # macOS 的库是 universal（x86_64 + arm64），一个包服务两个平台，
-          # 所以这里只跑一次，由 sync.sh 把它登记成两条清单记录。
-          - os: macos-14
-            platform: macos-universal
-            lunarg: mac
-          - os: ubuntu-latest
-            platform: linux-x86_64
-            lunarg: linux
-          - os: windows-latest
-            platform: windows-x86_64
-            lunarg: windows
-          - os: windows-11-arm
-            platform: windows-aarch64
-            lunarg: warm
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
 
     steps:
       - uses: actions/checkout@v4
@@ -120,7 +146,8 @@ jobs:
   build-linux-arm:
     name: linux-aarch64（源码构建）
     runs-on: ubuntu-24.04-arm
-    if: inputs.only_platforms == '' || contains(inputs.only_platforms, 'linux-aarch64')
+    needs: plan
+    if: needs.plan.outputs.linux_arm == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -165,7 +192,7 @@ jobs:
   # 汇总发布
   # ---------------------------------------------------------------------------
   release:
-    needs: [extract, build-linux-arm]
+    needs: [plan, extract, build-linux-arm]
     runs-on: ubuntu-latest
     # 用 only_platforms 跑部分平台时，被跳过的 job 会让默认的 needs 判定不通过。
     # 这个条件的意思是「只要没有失败也没有取消就发布」，跳过不算失败。
