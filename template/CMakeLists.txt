@@ -176,6 +176,7 @@ endif()
 # 着色器：Slang -> SPIR-V -> 嵌入头文件
 # ---------------------------------------------------------------------------
 # 每条规则处理一个入口点，生成的头文件由 src/pipeline.cpp 直接 #include。
+# 着色器之间可以用 #include 共享代码（shaders/color.slang 就是那样被两处引用的）。
 # 加新着色器时在下面照着补一条。
 
 vkx_add_slang_shader(${VKX_TARGET}

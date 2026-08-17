@@ -3,12 +3,14 @@
 // 构建时 slangc 会把这个文件编译两次（各取一个入口），产出两段 SPIR-V，
 // 再由 CMake 转成头文件嵌进可执行文件。规则见 cmake/VkxShaders.cmake。
 
+#include "color.slang"
+
 // 顶点着色器的输入，逐顶点从顶点缓冲里读。
-// location 要和 main.cpp 里 createPipeline() 的属性描述一一对应。
+// location 要和 pipeline.cpp 里的属性描述一一对应。
 struct VertexInput {
     [[vk::location(0)]] float2 position;   // 对应 Vertex::position
-    [[vk::location(1)]] float3 color;      // 对应 Vertex::color
-    // 加新属性（UV、法线……）时，这里和 main.cpp 两边都要加。
+    [[vk::location(1)]] float3 oklch;      // 对应 Vertex::oklch
+    // 加新属性（UV、法线……）时，这里和 pipeline.cpp 两边都要加。
 };
 
 // 顶点着色器传给片元着色器的数据。
@@ -19,18 +21,24 @@ struct VertexOutput {
 };
 
 // 顶点着色器：每个顶点跑一次。
-// 这里只是把二维坐标补成四维，颜色原样往下传。
+//
+// 坐标补成四维；颜色从 OKLCH 转成输出色域的 linear RGB（见 color.slang）。
+// 转换放在这里而不是片元着色器：颜色是逐顶点的，这里一个顶点只算一次，
+// 放到片元着色器就要每个像素算一次。
 [shader("vertex")]
 VertexOutput vertexMain(VertexInput input)
 {
     VertexOutput output;
     output.position = float4(input.position, 0.0, 1.0);
-    output.color    = input.color;
+    output.color    = oklchToLinearRgb(input.oklch);
     return output;
 }
 
 // 片元着色器：每个被覆盖的像素跑一次。
 // input.color 是三个顶点颜色按重心坐标插值后的结果，所以三角形是渐变的。
+//
+// 注意插值发生在 linear RGB 上，不是 OKLCH 上。做小范围渐变没问题；真要让渐变
+// 在感知上均匀（比如蓝到黄不经过灰），得把 OKLCH 传下来在这里逐像素转。
 [shader("fragment")]
 float4 fragmentMain(VertexOutput input) : SV_Target
 {

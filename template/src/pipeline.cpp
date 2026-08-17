@@ -22,12 +22,30 @@ bool Application::createPipeline()
         return false;
     }
 
+    // 输出色域用 specialization constant 交给着色器：它在整个程序生命周期里不变，
+    // 所以没必要每帧用 push constant 送一遍。填进去之后，驱动编译这个管线时会把
+    // color.slang 里那些 if 直接折叠掉，运行期一条分支都不剩。
+    //
+    // constantID 要和 color.slang 里 [[vk::constant_id(0)]] 的编号对上。
+    const uint32_t gamutValue = static_cast<uint32_t>(gamut_);
+    VkSpecializationMapEntry gamutEntry{};
+    gamutEntry.constantID = 0;
+    gamutEntry.offset = 0;
+    gamutEntry.size = sizeof(gamutValue);
+
+    VkSpecializationInfo specialization{};
+    specialization.mapEntryCount = 1;
+    specialization.pMapEntries = &gamutEntry;
+    specialization.dataSize = sizeof(gamutValue);
+    specialization.pData = &gamutValue;
+
     // 两个可编程阶段。pName 是 SPIR-V 里的入口名，slangc 统一生成为 "main"。
     VkPipelineShaderStageCreateInfo stages[2]{};
     stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
     stages[0].module = vertModule;
     stages[0].pName = "main";
+    stages[0].pSpecializationInfo = &specialization;   // 色域只有顶点着色器用得到
     stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
     stages[1].module = fragModule;
@@ -47,8 +65,8 @@ bool Application::createPipeline()
     attributes[0].offset = offsetof(Vertex, position);
     attributes[1].location = 1;
     attributes[1].binding = 0;
-    attributes[1].format = VK_FORMAT_R32G32B32_SFLOAT;   // float3 color
-    attributes[1].offset = offsetof(Vertex, color);
+    attributes[1].format = VK_FORMAT_R32G32B32_SFLOAT;   // float3 oklch
+    attributes[1].offset = offsetof(Vertex, oklch);
     // 加新的顶点属性（UV、法线……）：在 Vertex 里加字段，这里加一条 attribute，
     // 把下面的 vertexAttributeDescriptionCount 一起改掉，着色器里也加对应的 location。
 

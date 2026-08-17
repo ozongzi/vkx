@@ -59,12 +59,18 @@ function(vkx_add_slang_shader target)
 
     file(MAKE_DIRECTORY "${spv_dir}" "${gen_dir}")
 
+    # 着色器之间用 #include 共享代码（比如 color.slang），把它们所在的目录交给
+    # slangc 当搜索路径。同时把这些文件列进 DEPENDS，改了共享代码也会触发重编。
+    get_filename_component(source_dir "${source_abs}" DIRECTORY)
+    file(GLOB shader_includes "${source_dir}/*.slang")
+
     # 两步：slangc 编出 SPIR-V，再用脚本转成头文件。
     # DEPENDS 让 .slang 改动后自动重编。
     add_custom_command(
         OUTPUT "${header_file}"
         COMMAND "${VKX_SLANGC}" "${source_abs}"
                 -target spirv
+                -I "${source_dir}"
                 -entry ${ARG_ENTRY}
                 -stage ${ARG_STAGE}
                 -o "${spv_file}"
@@ -73,7 +79,7 @@ function(vkx_add_slang_shader target)
                 -DVKX_EMBED_OUTPUT=${header_file}
                 -DVKX_EMBED_VAR=${ARG_VAR}
                 -P "${VKX_EMBED_SCRIPT}"
-        DEPENDS "${source_abs}" "${VKX_EMBED_SCRIPT}"
+        DEPENDS "${source_abs}" ${shader_includes} "${VKX_EMBED_SCRIPT}"
         BYPRODUCTS "${spv_file}"
         COMMENT "slangc ${ARG_SOURCE} [${ARG_ENTRY}] -> ${ARG_HEADER}"
         VERBATIM)
