@@ -100,7 +100,8 @@ set(VKX_SOURCES
     src/debug.cpp           # 校验层消息出口
     src/surface.cpp         # 窗口表面
     src/device.cpp          # 挑显卡、逻辑设备
-    src/swapchain.cpp       # 交换链
+    src/swapchain.cpp       # 交换链、挑输出色域
+    src/color.cpp           # 输出色域与颜色换算
     src/memory.cpp          # 找显存类型
     src/vertex_buffer.cpp   # 顶点缓冲
     src/shader.cpp          # SPIR-V -> VkShaderModule

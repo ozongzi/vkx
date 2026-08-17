@@ -13,7 +13,8 @@
 //   debug.cpp         校验层的消息回调（只在 Debug 构建里有内容）
 //   surface.cpp       VkSurfaceKHR：把 SDL 窗口接给 Vulkan
 //   device.cpp        挑显卡、建逻辑设备和队列
-//   swapchain.cpp     交换链及其图像（窗口尺寸一变就整组重建）
+//   swapchain.cpp     交换链及其图像（窗口尺寸一变就整组重建）、挑输出色域
+//   color.h/.cpp      输出色域，以及把颜色转到输出色域
 //   memory.cpp        找显存类型，任何要分配显存的地方都用它
 //   vertex_buffer.cpp 顶点缓冲
 //   shader.cpp        把 SPIR-V 字节码包成 VkShaderModule
@@ -43,6 +44,7 @@
 // 现在这份清单是从上到下写死的。
 #pragma once
 
+#include "color.h"
 #include "vulkan_api.h"
 
 #include <cstdint>
@@ -97,6 +99,7 @@ private:
     // 全局对象：一个进程一份
     VkInstance instance_ = VK_NULL_HANDLE;
     bool validationEnabled_ = false;                 // 实例是否真的挂上了校验层
+    bool colorSpaceExtEnabled_ = false;              // 实例是否真的启用了广色域扩展
     VkSurfaceKHR surface_ = VK_NULL_HANDLE;          // 窗口在 Vulkan 里的代表
     VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
     uint32_t queueFamily_ = 0;                       // 同时支持图形和呈现的队列族
@@ -107,6 +110,8 @@ private:
     // 交换链：一组等着被画、被显示的图像。窗口尺寸变化时整组重建。
     VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
     VkFormat swapchainFormat_ = VK_FORMAT_UNDEFINED;
+    VkColorSpaceKHR swapchainColorSpace_ = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+    vkx::Gamut gamut_ = vkx::Gamut::Srgb;            // 输出色域，颜色要按它换算
     VkExtent2D swapchainExtent_ = {0, 0};
     std::vector<VkImage> swapchainImages_;
     std::vector<VkImageView> swapchainViews_;

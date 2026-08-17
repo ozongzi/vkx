@@ -2,9 +2,13 @@
 //
 // 窗口尺寸一变，这里的东西整组作废重建，所以创建和销毁都放在这个文件里。
 #include "app.h"
+#include "color.h"
 #include "error.h"
 
 #include <algorithm>
+
+using vkx::Gamut;
+using vkx::gamutName;
 
 // 创建交换链，以及每张图像的 image view 和呈现信号量。
 // 窗口尺寸一变，这些东西整组作废，由 recreateSwapchain() 重建。
@@ -23,15 +27,64 @@ bool Application::createSwapchain()
         return false;
     }
 
-    // 优先挑 sRGB 格式：由硬件做伽马转换，颜色才是对的。挑不到就用第一个。
-    VkSurfaceFormatKHR chosen = formats[0];
-    for (const VkSurfaceFormatKHR& format : formats) {
-        if (format.format == VK_FORMAT_B8G8R8A8_SRGB
-            && format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-            chosen = format;
-            break;
+    // 挑格式和色彩空间。只在第一次创建时挑，之后重建交换链一律沿用同一个选择：
+    // 管线创建时把附件格式写死了，中途变格式会和管线对不上。
+    if (swapchainFormat_ == VK_FORMAT_UNDEFINED) {
+        // 候选按优先级从高到低排。两条筛选原则：
+        //
+        // 一是尽量用广色域。Display P3 比 sRGB 大一圈，青绿一带差别最明显。
+        //
+        // 二是坚持 _SRGB 后缀的格式。这个后缀的含义是硬件在写入时自动把线性值编码
+        // 成 sRGB，也就是说这步转换是免费的，着色器只管输出线性值就行。
+        // Display P3 用的传递函数和 sRGB 是同一条（两者差别只在基色），所以
+        // B8G8R8A8_SRGB 配 DISPLAY_P3_NONLINEAR 是合法组合，硬件那步照旧免费。
+        //
+        // 想再往上走（10 位色深、HDR）就得放弃这个便利：Vulkan 没有 10 位的 _SRGB
+        // 格式，用 A2B10G10R10_UNORM 就要自己在着色器里做伽马编码。那是另一个话题。
+        const struct {
+            VkFormat format;
+            VkColorSpaceKHR colorSpace;
+            Gamut gamut;
+            bool needsExtension;   // 非 sRGB 的色彩空间都来自 VK_EXT_swapchain_colorspace
+        } wanted[] = {
+            {VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT, Gamut::DisplayP3, true},
+            {VK_FORMAT_R8G8B8A8_SRGB, VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT, Gamut::DisplayP3, true},
+            {VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR,       Gamut::Srgb,      false},
+            {VK_FORMAT_R8G8B8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR,       Gamut::Srgb,      false},
+        };
+
+        // 一个都匹配不上时退回 surface 报的第一个，并按 sRGB 处理颜色——
+        // 那时候颜色可能不完全准，但至少画得出来。
+        VkSurfaceFormatKHR chosen = formats[0];
+        gamut_ = Gamut::Srgb;
+        bool found = false;
+        for (const auto& w : wanted) {
+            // 光看 surface 报了什么不够：没启用扩展就不能用扩展带来的色彩空间，
+            // 哪怕它出现在列表里。
+            if (w.needsExtension && !colorSpaceExtEnabled_) {
+                continue;
+            }
+            for (const VkSurfaceFormatKHR& format : formats) {
+                if (format.format == w.format && format.colorSpace == w.colorSpace) {
+                    chosen = format;
+                    gamut_ = w.gamut;
+                    found = true;
+                    break;
+                }
+            }
+            if (found) {
+                break;
+            }
         }
+
+        swapchainFormat_ = chosen.format;
+        swapchainColorSpace_ = chosen.colorSpace;
+        SDL_Log("vkx: 输出色域 %s", gamutName(gamut_));
     }
+
+    VkSurfaceFormatKHR chosen{};
+    chosen.format = swapchainFormat_;
+    chosen.colorSpace = swapchainColorSpace_;
 
     // 尺寸通常由 caps.currentExtent 给定；等于 UINT32_MAX 表示交给应用决定。
     VkExtent2D extent = caps.currentExtent;
@@ -71,7 +124,6 @@ bool Application::createSwapchain()
     info.clipped = VK_TRUE;                                  // 被遮住的像素可以不画
 
     VKX_CHECK(vkCreateSwapchainKHR(device_, &info, nullptr, &swapchain_));
-    swapchainFormat_ = chosen.format;
     swapchainExtent_ = extent;
 
     // 图像由交换链持有，这里只是把句柄取出来，不需要自己销毁。

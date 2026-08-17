@@ -38,6 +38,18 @@ bool Application::createInstance()
         flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
     }
 
+    // 广色域：Display P3 之类的色彩空间由这个扩展提供，用它才能让画面用上
+    // 现代显示器比 sRGB 多出来的那一圈颜色（见 swapchain.cpp 挑格式那段）。
+    // 它是可选的，驱动没有就退回 sRGB。
+    if (hasExtension(available, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME)) {
+        extensions.push_back(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);
+        // 这个标志必须自己记着，不能靠「没启用扩展就枚举不到」来判断：
+        // 有些实现（MoltenVK 就是）即使扩展没启用，也照样会在
+        // vkGetPhysicalDeviceSurfaceFormatsKHR 里把 P3 报出来。照着用就违反了规范，
+        // 程序还照样能跑，只有校验层会告诉你这件事。
+        colorSpaceExtEnabled_ = true;
+    }
+
     // 还需要别的实例扩展，在这里 extensions.push_back(...)。
 
     std::vector<const char*> layers;
