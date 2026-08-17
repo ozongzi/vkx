@@ -19,9 +19,11 @@ bool Application::create_swapchain()
     VKX_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &caps));
 
     uint32_t format_count = 0;
-    VKX_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &format_count, nullptr));
+    VKX_CHECK(
+        vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &format_count, nullptr));
     std::vector<VkSurfaceFormatKHR> formats(format_count);
-    VKX_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &format_count, formats.data()));
+    VKX_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &format_count,
+                                                   formats.data()));
     if (formats.empty()) {
         report_error("surface 没有可用的像素格式。");
         return false;
@@ -45,12 +47,14 @@ bool Application::create_swapchain()
             VkFormat format;
             VkColorSpaceKHR color_space;
             Gamut gamut;
-            bool needs_extension;   // 非 sRGB 的色彩空间都来自 VK_EXT_swapchain_colorspace
+            bool needs_extension;  // 非 sRGB 的色彩空间都来自 VK_EXT_swapchain_colorspace
         } wanted[] = {
-            {VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT, Gamut::DisplayP3, true},
-            {VK_FORMAT_R8G8B8A8_SRGB, VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT, Gamut::DisplayP3, true},
-            {VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR,       Gamut::Srgb,      false},
-            {VK_FORMAT_R8G8B8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR,       Gamut::Srgb,      false},
+            {VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT, Gamut::DisplayP3,
+             true},
+            {VK_FORMAT_R8G8B8A8_SRGB, VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT, Gamut::DisplayP3,
+             true},
+            {VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR, Gamut::Srgb, false},
+            {VK_FORMAT_R8G8B8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR, Gamut::Srgb, false},
         };
 
         // 一个都匹配不上时退回 surface 报的第一个，并按 sRGB 处理颜色——
@@ -92,10 +96,10 @@ bool Application::create_swapchain()
         int width = 0;
         int height = 0;
         SDL_GetWindowSizeInPixels(window, &width, &height);
-        extent.width = std::clamp(static_cast<uint32_t>(width),
-                                  caps.minImageExtent.width, caps.maxImageExtent.width);
-        extent.height = std::clamp(static_cast<uint32_t>(height),
-                                   caps.minImageExtent.height, caps.maxImageExtent.height);
+        extent.width = std::clamp(static_cast<uint32_t>(width), caps.minImageExtent.width,
+                                  caps.maxImageExtent.width);
+        extent.height = std::clamp(static_cast<uint32_t>(height), caps.minImageExtent.height,
+                                   caps.maxImageExtent.height);
     }
     if (extent.width == 0 || extent.height == 0) {
         // 窗口最小化了，这时建不出交换链，等它恢复。
@@ -116,12 +120,12 @@ bool Application::create_swapchain()
     info.imageColorSpace = chosen.colorSpace;
     info.imageExtent = extent;
     info.imageArrayLayers = 1;
-    info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;   // 图像只作渲染目标
-    info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;       // 只有一个队列族用它
-    info.preTransform = caps.currentTransform;               // 沿用设备当前的屏幕方向
-    info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR; // 窗口不透明
-    info.presentMode = VK_PRESENT_MODE_FIFO_KHR;             // 垂直同步，所有实现都支持
-    info.clipped = VK_TRUE;                                  // 被遮住的像素可以不画
+    info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;    // 图像只作渲染目标
+    info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;        // 只有一个队列族用它
+    info.preTransform = caps.currentTransform;                // 沿用设备当前的屏幕方向
+    info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;  // 窗口不透明
+    info.presentMode = VK_PRESENT_MODE_FIFO_KHR;              // 垂直同步，所有实现都支持
+    info.clipped = VK_TRUE;                                   // 被遮住的像素可以不画
 
     VKX_CHECK(vkCreateSwapchainKHR(device, &info, nullptr, &swapchain));
     swapchain_extent = extent;
@@ -170,7 +174,7 @@ void Application::destroy_swapchain()
         vkDestroyImageView(device, view, nullptr);
     }
     swapchain_views.clear();
-    swapchain_images.clear();   // 图像归交换链所有，只清句柄
+    swapchain_images.clear();  // 图像归交换链所有，只清句柄
 
     if (swapchain != VK_NULL_HANDLE) {
         vkDestroySwapchainKHR(device, swapchain, nullptr);

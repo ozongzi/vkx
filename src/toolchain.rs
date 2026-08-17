@@ -17,7 +17,9 @@ use crate::error::{Error, Result};
 
 pub fn home_dir() -> PathBuf {
     let key = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
-    std::env::var_os(key).map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."))
+    std::env::var_os(key)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 /// 安装脚本铺好的环境根目录。
@@ -29,7 +31,11 @@ pub fn vkx_home() -> PathBuf {
 }
 
 fn exe(name: &str) -> String {
-    if cfg!(windows) { format!("{name}.exe") } else { name.to_string() }
+    if cfg!(windows) {
+        format!("{name}.exe")
+    } else {
+        name.to_string()
+    }
 }
 
 /// PATH 里找可执行文件。
@@ -65,9 +71,19 @@ fn managed_or_system(relative: &str, program: &str) -> Option<PathBuf> {
     which(program)
 }
 
+/// clang-format。先用 vkx 装的那份，保证所有人格式化结果一致；
+/// 没装（比如用了 --no-vkx）就退回系统 PATH 上的。
+pub fn clang_format() -> Result<PathBuf> {
+    let relative = format!("tools/clang-format/{}", exe("clang-format"));
+    managed_or_system(&relative, "clang-format").ok_or_else(|| missing("clang-format", &relative))
+}
+
 fn missing(tool: &str, expected: &str) -> Error {
     Error::new(format!("找不到 {tool}"))
-        .hint(format!("安装脚本应该把它装在 {}", vkx_home().join(expected).display()))
+        .hint(format!(
+            "安装脚本应该把它装在 {}",
+            vkx_home().join(expected).display()
+        ))
         .hint("重新运行安装脚本即可补齐")
 }
 
@@ -82,8 +98,11 @@ pub fn run(command: &mut Command, what: &str) -> Result<()> {
         Error::new(format!("无法执行 {what}: {e}")).hint(format!("命令: {rendered}"))
     })?;
     if !status.success() {
-        return Err(Error::new(format!("{what}失败（退出码 {}）", status.code().unwrap_or(-1)))
-            .hint(format!("命令: {rendered}")));
+        return Err(Error::new(format!(
+            "{what}失败（退出码 {}）",
+            status.code().unwrap_or(-1)
+        ))
+        .hint(format!("命令: {rendered}")));
     }
     Ok(())
 }
@@ -152,16 +171,22 @@ pub fn windows_msvc() -> Option<String> {
         return None;
     }
     let program_files = std::env::var_os("ProgramFiles(x86)")?;
-    let vswhere = PathBuf::from(program_files)
-        .join("Microsoft Visual Studio/Installer/vswhere.exe");
+    let vswhere =
+        PathBuf::from(program_files).join("Microsoft Visual Studio/Installer/vswhere.exe");
     if !vswhere.is_file() {
         return None;
     }
     let output = capture(
         &vswhere,
-        &["-latest", "-products", "*", "-requires",
-          "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
-          "-property", "installationVersion"],
+        &[
+            "-latest",
+            "-products",
+            "*",
+            "-requires",
+            "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+            "-property",
+            "installationVersion",
+        ],
     )?;
     (!output.is_empty()).then_some(output)
 }
@@ -185,13 +210,12 @@ pub fn source_dir(name: &str) -> Option<PathBuf> {
 /// SDL3 的 Android .aar，供 Gradle 的 prefab 使用。
 pub fn sdl_android_aar() -> Result<PathBuf> {
     let dir = vkx_home().join("src/sdl3-android");
-    let found = std::fs::read_dir(&dir)
-        .ok()
-        .and_then(|entries| {
-            entries.filter_map(|e| e.ok()).map(|e| e.path()).find(|path| {
-                path.extension().is_some_and(|ext| ext == "aar")
-            })
-        });
+    let found = std::fs::read_dir(&dir).ok().and_then(|entries| {
+        entries
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .find(|path| path.extension().is_some_and(|ext| ext == "aar"))
+    });
     found.ok_or_else(|| missing("SDL3 的 Android aar", "src/sdl3-android"))
 }
 
@@ -227,7 +251,11 @@ pub fn keytool() -> Result<PathBuf> {
 }
 
 pub fn find_gradle() -> Option<PathBuf> {
-    let name = if cfg!(windows) { "gradle.bat" } else { "gradle" };
+    let name = if cfg!(windows) {
+        "gradle.bat"
+    } else {
+        "gradle"
+    };
     let managed = vkx_home().join("tools/gradle/bin").join(name);
     if managed.is_file() {
         return Some(managed);
@@ -309,7 +337,11 @@ pub fn moltenvk_lib(device: bool) -> Result<PathBuf> {
     if !xcframework.is_dir() {
         return Err(missing("MoltenVK", "tools/moltenvk"));
     }
-    let slice = if device { "ios-arm64" } else { "ios-arm64_x86_64-simulator" };
+    let slice = if device {
+        "ios-arm64"
+    } else {
+        "ios-arm64_x86_64-simulator"
+    };
     let library = xcframework.join(slice).join("libMoltenVK.a");
     if !library.is_file() {
         return Err(Error::new(format!("MoltenVK 里没有 {slice} 这个切片"))

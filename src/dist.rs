@@ -77,8 +77,8 @@ fn dist_macos(project: &Project, executable: &Path, dist: &Path) -> Result<PathB
         return Err(Error::new(format!("缺少 {}", plist_template.display()))
             .hint("用新版 vkx new 生成的工程才带 macOS 打包配置"));
     }
-    let plist = std::fs::read_to_string(&plist_template)?
-        .replace("{{PROJECT_VERSION}}", &project.version);
+    let plist =
+        std::fs::read_to_string(&plist_template)?.replace("{{PROJECT_VERSION}}", &project.version);
     std::fs::write(contents.join("Info.plist"), plist)?;
 
     let moltenvk = toolchain::moltenvk_dylib_dir()
@@ -94,7 +94,9 @@ fn dist_macos(project: &Project, executable: &Path, dist: &Path) -> Result<PathB
     // 要给别人下载还得做公证（notarization），那需要付费账号。
     ui::step("签名 (ad-hoc)");
     toolchain::run(
-        Command::new("codesign").args(["--force", "--deep", "--sign", "-"]).arg(&app),
+        Command::new("codesign")
+            .args(["--force", "--deep", "--sign", "-"])
+            .arg(&app),
         "codesign",
     )?;
 
@@ -122,7 +124,14 @@ fn dist_windows(project: &Project, executable: &Path, dist: &Path) -> Result<Pat
     let staging = dist.join(".staging");
     stage_single_file(&staging, executable, &format!("{}.exe", project.name))?;
     toolchain::run(
-        Command::new("tar").arg("-a").arg("-c").arg("-f").arg(&archive).arg("-C").arg(&staging).arg("."),
+        Command::new("tar")
+            .arg("-a")
+            .arg("-c")
+            .arg("-f")
+            .arg(&archive)
+            .arg("-C")
+            .arg(&staging)
+            .arg("."),
         "打包",
     )?;
     std::fs::remove_dir_all(&staging)?;
@@ -137,7 +146,12 @@ fn dist_linux(project: &Project, executable: &Path, dist: &Path) -> Result<PathB
     let staging = dist.join(".staging");
     stage_single_file(&staging, executable, &project.name)?;
     toolchain::run(
-        Command::new("tar").arg("-czf").arg(&archive).arg("-C").arg(&staging).arg("."),
+        Command::new("tar")
+            .arg("-czf")
+            .arg(&archive)
+            .arg("-C")
+            .arg(&staging)
+            .arg("."),
         "打包",
     )?;
     std::fs::remove_dir_all(&staging)?;
@@ -196,9 +210,17 @@ pub fn dist_ios(project: &Project) -> Result<PathBuf> {
     ui::step("xcodebuild archive");
     toolchain::run(
         Command::new("xcodebuild")
-            .arg("-project").arg(&xcodeproj)
-            .args(["-scheme", &project.name, "-configuration", "Release", "-destination",
-                   "generic/platform=iOS", "-archivePath"])
+            .arg("-project")
+            .arg(&xcodeproj)
+            .args([
+                "-scheme",
+                &project.name,
+                "-configuration",
+                "Release",
+                "-destination",
+                "generic/platform=iOS",
+                "-archivePath",
+            ])
             .arg(&archive)
             .args(["archive", "-quiet"]),
         "xcodebuild archive",
@@ -231,9 +253,12 @@ pub fn dist_ios(project: &Project) -> Result<PathBuf> {
     toolchain::run(
         Command::new("xcodebuild")
             .arg("-exportArchive")
-            .arg("-archivePath").arg(&archive)
-            .arg("-exportOptionsPlist").arg(&options)
-            .arg("-exportPath").arg(&export_dir)
+            .arg("-archivePath")
+            .arg(&archive)
+            .arg("-exportOptionsPlist")
+            .arg(&options)
+            .arg("-exportPath")
+            .arg(&export_dir)
             .arg("-quiet"),
         "xcodebuild exportArchive",
     )?;

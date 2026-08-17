@@ -24,7 +24,7 @@ bool Application::create_frame_resources()
     // 这个标志允许单独重置池里的某一个缓冲（vkResetCommandBuffer）。
     // 不加的话只能整池一起重置，而每帧要重置的只是当前这一个。
     pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    pool_info.queueFamilyIndex = queue_family;   // 录出来的命令只能提交给这个族的队列
+    pool_info.queueFamilyIndex = queue_family;  // 录出来的命令只能提交给这个族的队列
     VKX_CHECK(vkCreateCommandPool(device, &pool_info, nullptr, &command_pool));
 
     VkCommandBufferAllocateInfo alloc_info{};

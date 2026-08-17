@@ -20,7 +20,7 @@ int main(int argc, char* argv[])
 
     Application app;
     if (!app.init()) {
-        return 1;   // 建到一半失败，析构函数会把已经建好的那部分拆掉
+        return 1;  // 建到一半失败，析构函数会把已经建好的那部分拆掉
     }
     app.run();
     return 0;

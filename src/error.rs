@@ -9,7 +9,10 @@ pub struct Error {
 
 impl Error {
     pub fn new(message: impl Into<String>) -> Self {
-        Self { message: message.into(), hints: Vec::new() }
+        Self {
+            message: message.into(),
+            hints: Vec::new(),
+        }
     }
 
     pub fn hint(mut self, hint: impl Into<String>) -> Self {

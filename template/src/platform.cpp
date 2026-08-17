@@ -26,11 +26,12 @@ bool Application::init_platform()
     // 它的搜索列表里第一项就是 @executable_path/../Frameworks/libMoltenVK.dylib，
     // 所以 vkx dist 打出来的 .app（MoltenVK 就放在那儿）不需要任何额外处理。
     if (!SDL_Vulkan_LoadLibrary(nullptr)) {
-        report_error("找不到 Vulkan 运行时: %s\n\n"
-                    "  Windows/Linux: 请更新显卡驱动\n"
-                    "  macOS/iOS:     需要 MoltenVK（Vulkan SDK 或 `brew install molten-vk`）\n"
-                    "  Android:       设备需支持 Vulkan 1.3",
-                    SDL_GetError());
+        report_error(
+            "找不到 Vulkan 运行时: %s\n\n"
+            "  Windows/Linux: 请更新显卡驱动\n"
+            "  macOS/iOS:     需要 MoltenVK（Vulkan SDK 或 `brew install molten-vk`）\n"
+            "  Android:       设备需支持 Vulkan 1.3",
+            SDL_GetError());
         return false;
     }
 
@@ -52,8 +53,9 @@ bool Application::init_platform()
     // SDL_WINDOW_RESIZABLE      允许拖动边框改大小（交换链会跟着重建）
     // SDL_WINDOW_HIGH_PIXEL_DENSITY  在 Retina 屏上拿到真实像素数的画布，
     //                           而不是被系统放大的模糊图像
-    window = SDL_CreateWindow("{{PROJECT_NAME}}", 1280, 720,
-                               SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+    window =
+        SDL_CreateWindow("{{PROJECT_NAME}}", 1280, 720,
+                         SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
     if (window == nullptr) {
         report_error("SDL_CreateWindow 失败: %s", SDL_GetError());
         return false;

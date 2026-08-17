@@ -183,7 +183,7 @@ export ANDROID_HOME="\$VKX_HOME/android/sdk"
 EOF
 [ -n "$NDK_VERSION" ] && printf 'export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/%s"\n' "$NDK_VERSION" >> "$ENV_FILE"
 cat >> "$ENV_FILE" <<'EOF'
-export PATH="$VKX_HOME/bin:$VKX_HOME/tools/cmake/bin:$VKX_HOME/tools/ninja:$VKX_HOME/tools/slang/bin:$VKX_HOME/tools/gradle/bin:$ANDROID_HOME/platform-tools:$JAVA_HOME/bin:$PATH"
+export PATH="$VKX_HOME/bin:$VKX_HOME/tools/cmake/bin:$VKX_HOME/tools/ninja:$VKX_HOME/tools/slang/bin:$VKX_HOME/tools/clang-format:$VKX_HOME/tools/gradle/bin:$ANDROID_HOME/platform-tools:$JAVA_HOME/bin:$PATH"
 EOF
 # Vulkan 的运行期配置。三个变量都不是 DYLD_ 开头的，这一点是有意的：
 # macOS 的 SIP 会在执行系统二进制时把 DYLD_* 全部剥掉，所以只要中间隔了一层
@@ -271,6 +271,7 @@ fi
 check_tool cmake  "$HOME_DIR/tools/cmake/bin/cmake" --version
 check_tool ninja  "$HOME_DIR/tools/ninja/ninja" --version
 check_tool slangc "$HOME_DIR/tools/slang/bin/slangc" -h
+check_tool clang-format "$HOME_DIR/tools/clang-format/clang-format" --version
 if [ "$WITH_ANDROID" = 1 ]; then
     check_tool java "$HOME_DIR/tools/jdk/bin/java" -version
 fi

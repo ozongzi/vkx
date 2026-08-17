@@ -18,9 +18,9 @@ namespace {
 // 返回 VK_TRUE 会让那次调用直接失败，那是校验层自测用的，应用程序一律返回
 // VK_FALSE。
 VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
-                                             VkDebugUtilsMessageTypeFlagsEXT,
-                                             const VkDebugUtilsMessengerCallbackDataEXT* data,
-                                             void*)
+                                              VkDebugUtilsMessageTypeFlagsEXT,
+                                              const VkDebugUtilsMessengerCallbackDataEXT* data,
+                                              void*)
 {
     // 严重程度是有序的枚举，所以可以直接比大小：只打印警告及以上。
     // 想看更啰嗦的信息（每次创建对象都会有一条），把这个条件放宽，
@@ -47,12 +47,12 @@ bool Application::create_debug_messenger()
     VkDebugUtilsMessengerCreateInfoEXT messenger_info{};
     messenger_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
     // 想收哪些严重程度的消息。
-    messenger_info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT
-                                  | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    messenger_info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                                     VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
     // 想收哪几类消息：一般信息、规范违规、性能建议。
-    messenger_info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT
-                              | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT
-                              | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+    messenger_info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+                                 VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                                 VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
     messenger_info.pfnUserCallback = debug_callback;
 
     // 这里故意不用 VKX_CHECK：messenger 只是个调试辅助，建不出来

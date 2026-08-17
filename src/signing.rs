@@ -46,15 +46,24 @@ pub fn ensure_keystore(project_root: &Path, package_id: &str) -> Result<PathBuf>
     let mut command = Command::new(&keytool);
     command
         .arg("-genkeypair")
-        .arg("-storetype").arg("PKCS12")
-        .arg("-keystore").arg(&keystore)
-        .arg("-alias").arg(ALIAS)
-        .arg("-keyalg").arg("RSA")
-        .arg("-keysize").arg("2048")
-        .arg("-validity").arg("10000")   // 约 27 年，够长；商店要求有效期到 2033 年之后
-        .arg("-storepass").arg(&password)
-        .arg("-keypass").arg(&password)
-        .arg("-dname").arg(format!("CN={package_id}, OU=vkx, O=vkx, C=CN"))
+        .arg("-storetype")
+        .arg("PKCS12")
+        .arg("-keystore")
+        .arg(&keystore)
+        .arg("-alias")
+        .arg(ALIAS)
+        .arg("-keyalg")
+        .arg("RSA")
+        .arg("-keysize")
+        .arg("2048")
+        .arg("-validity")
+        .arg("10000") // 约 27 年，够长；商店要求有效期到 2033 年之后
+        .arg("-storepass")
+        .arg(&password)
+        .arg("-keypass")
+        .arg(&password)
+        .arg("-dname")
+        .arg(format!("CN={package_id}, OU=vkx, O=vkx, C=CN"))
         .stdout(std::process::Stdio::null());
     toolchain::run(&mut command, "keytool 生成密钥")?;
 

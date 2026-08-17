@@ -77,7 +77,9 @@ fn write_dir(dir: &Dir<'_>, root: &Path, name: &str, package_id: &str) -> Result
 /// android/app/src/main/java/vkxpackage/ 下，生成时展开成真实包路径。
 fn rewrite_path(path: &Path, package_id: &str) -> PathBuf {
     let package_path = package_id.replace('.', "/");
-    let text = path.to_string_lossy().replace("java/vkxpackage", &format!("java/{package_path}"));
+    let text = path
+        .to_string_lossy()
+        .replace("java/vkxpackage", &format!("java/{package_path}"));
     PathBuf::from(text)
 }
 

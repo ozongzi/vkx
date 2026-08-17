@@ -27,8 +27,10 @@ impl Project {
             }
         }
 
-        Err(Error::new("当前目录不在任何 vkx 工程里（往上都没找到 vkx.toml）")
-            .hint("先 cd 进工程目录，或用 `vkx new <名字>` 新建一个"))
+        Err(
+            Error::new("当前目录不在任何 vkx 工程里（往上都没找到 vkx.toml）")
+                .hint("先 cd 进工程目录，或用 `vkx new <名字>` 新建一个"),
+        )
     }
 
     fn load(root: &Path, manifest: &Path) -> Result<Self> {
@@ -41,11 +43,16 @@ impl Project {
         })?;
         let package_id = value_of(&text, "project", "package_id")
             .unwrap_or_else(|| format!("com.example.{name}"));
-        let version =
-            value_of(&text, "project", "version").unwrap_or_else(|| "0.1.0".to_string());
+        let version = value_of(&text, "project", "version").unwrap_or_else(|| "0.1.0".to_string());
         let development_team = value_of(&text, "ios", "development_team");
 
-        Ok(Self { root: root.to_path_buf(), name, package_id, version, development_team })
+        Ok(Self {
+            root: root.to_path_buf(),
+            name,
+            package_id,
+            version,
+            development_team,
+        })
     }
 
     pub fn build_dir(&self, profile: &str) -> PathBuf {
@@ -64,14 +71,19 @@ fn value_of(text: &str, section: &str, key: &str) -> Option<String> {
         if line.starts_with('#') || line.is_empty() {
             continue;
         }
-        if let Some(name) = line.strip_prefix('[').and_then(|rest| rest.strip_suffix(']')) {
+        if let Some(name) = line
+            .strip_prefix('[')
+            .and_then(|rest| rest.strip_suffix(']'))
+        {
             current = name.trim().to_string();
             continue;
         }
         if current != section {
             continue;
         }
-        let Some((left, right)) = line.split_once('=') else { continue };
+        let Some((left, right)) = line.split_once('=') else {
+            continue;
+        };
         if left.trim() != key {
             continue;
         }
@@ -85,12 +97,64 @@ fn value_of(text: &str, section: &str, key: &str) -> Option<String> {
 
 /// Android 的包名会原样变成 Java 的 package 语句，撞上关键字就编译不过。
 const JAVA_KEYWORDS: &[&str] = &[
-    "abstract", "assert", "boolean", "break", "byte", "case", "catch", "char", "class", "const",
-    "continue", "default", "do", "double", "else", "enum", "extends", "final", "finally", "float",
-    "for", "goto", "if", "implements", "import", "instanceof", "int", "interface", "long", "native",
-    "new", "package", "private", "protected", "public", "return", "short", "static", "strictfp",
-    "super", "switch", "synchronized", "this", "throw", "throws", "transient", "try", "void",
-    "volatile", "while", "true", "false", "null", "record", "sealed", "permits", "var", "yield",
+    "abstract",
+    "assert",
+    "boolean",
+    "break",
+    "byte",
+    "case",
+    "catch",
+    "char",
+    "class",
+    "const",
+    "continue",
+    "default",
+    "do",
+    "double",
+    "else",
+    "enum",
+    "extends",
+    "final",
+    "finally",
+    "float",
+    "for",
+    "goto",
+    "if",
+    "implements",
+    "import",
+    "instanceof",
+    "int",
+    "interface",
+    "long",
+    "native",
+    "new",
+    "package",
+    "private",
+    "protected",
+    "public",
+    "return",
+    "short",
+    "static",
+    "strictfp",
+    "super",
+    "switch",
+    "synchronized",
+    "this",
+    "throw",
+    "throws",
+    "transient",
+    "try",
+    "void",
+    "volatile",
+    "while",
+    "true",
+    "false",
+    "null",
+    "record",
+    "sealed",
+    "permits",
+    "var",
+    "yield",
 ];
 
 pub fn validate_package_id(package_id: &str) -> Result<()> {
@@ -100,11 +164,15 @@ pub fn validate_package_id(package_id: &str) -> Result<()> {
                 .hint("形如 com.example.mygame"));
         }
         if !segment.chars().next().unwrap().is_ascii_alphabetic() {
-            return Err(Error::new(format!("包名的每一段都要以字母开头：`{segment}`")));
+            return Err(Error::new(format!(
+                "包名的每一段都要以字母开头：`{segment}`"
+            )));
         }
         if JAVA_KEYWORDS.contains(&segment) {
-            return Err(Error::new(format!("包名里的 `{segment}` 是 Java 关键字，Android 编不过"))
-                .hint("换一个不含 Java 关键字的包名，例如 com.example.game"));
+            return Err(Error::new(format!(
+                "包名里的 `{segment}` 是 Java 关键字，Android 编不过"
+            ))
+            .hint("换一个不含 Java 关键字的包名，例如 com.example.game"));
         }
     }
     Ok(())
@@ -119,9 +187,14 @@ pub fn validate_name(name: &str) -> Result<()> {
         return Err(Error::new(format!("工程名 `{name}` 必须以英文字母开头"))
             .hint("它会被用作可执行文件名和 Android 包名的一部分"));
     }
-    if let Some(bad) = name.chars().find(|c| !c.is_ascii_alphanumeric() && *c != '_' && *c != '-') {
-        return Err(Error::new(format!("工程名 `{name}` 里有不允许的字符 `{bad}`"))
-            .hint("只能用字母、数字、下划线和连字符"));
+    if let Some(bad) = name
+        .chars()
+        .find(|c| !c.is_ascii_alphanumeric() && *c != '_' && *c != '-')
+    {
+        return Err(
+            Error::new(format!("工程名 `{name}` 里有不允许的字符 `{bad}`"))
+                .hint("只能用字母、数字、下划线和连字符"),
+        );
     }
     Ok(())
 }

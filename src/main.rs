@@ -1,6 +1,7 @@
 mod builder;
 mod dist;
 mod error;
+mod fmt;
 mod mobile;
 mod project;
 mod prompt;
@@ -70,6 +71,12 @@ enum Command {
         #[arg(long, value_enum, default_value_t = Target::Desktop)]
         target: Target,
     },
+    /// 按 .clang-format 格式化 src/ 下的源码
+    Fmt {
+        /// 只检查不修改：有文件不合格式就以非零码退出，给 CI 用
+        #[arg(long)]
+        check: bool,
+    },
     /// 删除构建产物
     Clean,
 }
@@ -87,12 +94,20 @@ fn main() -> ExitCode {
 
 fn dispatch(cli: Cli) -> Result<u8> {
     match cli.command {
-        Command::New { name, path, package_id } => {
+        Command::New {
+            name,
+            path,
+            package_id,
+        } => {
             // 两项都是必需的：命令行上没给的，问用户要。
             let name = resolve_name(name, path.as_deref())?;
             let package_id = resolve_package_id(package_id, &name)?;
 
-            let options = scaffold::NewOptions { name, path, package_id };
+            let options = scaffold::NewOptions {
+                name,
+                path,
+                package_id,
+            };
             let root = scaffold::create(&options)?;
             // 顺手把 Android 的 release 签名密钥备好，工程开箱就能出签名包。
             signing::setup_for_new_project(&root, &options.package_id);
@@ -104,7 +119,10 @@ fn dispatch(cli: Cli) -> Result<u8> {
             eprintln!("  cd {relative}");
             eprintln!("  vkx run");
             eprintln!();
-            eprintln!("{}", ui::dim("首次构建会拉取并编译 SDL3 等依赖，需要几分钟。"));
+            eprintln!(
+                "{}",
+                ui::dim("首次构建会拉取并编译 SDL3 等依赖，需要几分钟。")
+            );
             Ok(0)
         }
         Command::Build { release, target } => {
@@ -120,7 +138,11 @@ fn dispatch(cli: Cli) -> Result<u8> {
             eprintln!("产物：{}", ui::bold(&pretty_path(&artifact)));
             Ok(0)
         }
-        Command::Run { release, target, args } => {
+        Command::Run {
+            release,
+            target,
+            args,
+        } => {
             let project = current_project()?;
             let profile = profile(release);
             let code = match target {
@@ -145,6 +167,10 @@ fn dispatch(cli: Cli) -> Result<u8> {
                 eprintln!("  {}", ui::bold(&pretty_path(output)));
             }
             Ok(0)
+        }
+        Command::Fmt { check } => {
+            let project = current_project()?;
+            fmt::run(&project, check)
         }
         Command::Clean => {
             let project = current_project()?;
@@ -227,7 +253,11 @@ fn current_project() -> Result<Project> {
 }
 
 fn profile(release: bool) -> Profile {
-    if release { Profile::Release } else { Profile::Debug }
+    if release {
+        Profile::Release
+    } else {
+        Profile::Debug
+    }
 }
 
 /// 尽量按相对当前目录显示路径，输出短一点。

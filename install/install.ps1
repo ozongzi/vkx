@@ -190,7 +190,8 @@ $pathEntries = @(
     (Join-Path $vkxHome "bin"),
     (Join-Path $vkxHome "tools\cmake\bin"),
     (Join-Path $vkxHome "tools\ninja"),
-    (Join-Path $vkxHome "tools\slang\bin")
+    (Join-Path $vkxHome "tools\slang\bin"),
+    (Join-Path $vkxHome "tools\clang-format")
 )
 if (-not $NoAndroid) {
     $pathEntries += (Join-Path $vkxHome "tools\gradle\bin")

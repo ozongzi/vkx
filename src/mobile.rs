@@ -57,7 +57,10 @@ fn run_gradle_task(project: &Project, profile: Profile, task: &str) -> Result<Pa
         .env("JAVA_HOME", &jdk)
         .env("ANDROID_HOME", &sdk)
         .env("ANDROID_NDK_HOME", &ndk)
-        .env("PATH", prepend_to_path(ninja.parent().unwrap_or(Path::new("."))));
+        .env(
+            "PATH",
+            prepend_to_path(ninja.parent().unwrap_or(Path::new("."))),
+        );
 
     // 依赖源码走本地缓存，构建不用联网。SDL3 由 .aar 提供，这里只需要另外两个。
     if let Some(dir) = toolchain::source_dir("vulkan-headers") {
@@ -96,7 +99,12 @@ pub fn build_android(project: &Project, profile: Profile) -> Result<PathBuf> {
     candidates
         .into_iter()
         .find(|path| path.is_file())
-        .ok_or_else(|| Error::new(format!("Gradle 跑完了，但 {} 里没有 apk", output_dir.display())))
+        .ok_or_else(|| {
+            Error::new(format!(
+                "Gradle 跑完了，但 {} 里没有 apk",
+                output_dir.display()
+            ))
+        })
 }
 
 /// 出 AAB（Android App Bundle），上架 Google Play 用的格式。
@@ -104,7 +112,10 @@ pub fn bundle_android(project: &Project) -> Result<PathBuf> {
     let android_dir = run_gradle_task(project, Profile::Release, "bundleRelease")?;
     let aab = android_dir.join("app/build/outputs/bundle/release/app-release.aab");
     if !aab.is_file() {
-        return Err(Error::new(format!("Gradle 跑完了，但没找到 {}", aab.display())));
+        return Err(Error::new(format!(
+            "Gradle 跑完了，但没找到 {}",
+            aab.display()
+        )));
     }
     Ok(aab)
 }
@@ -113,19 +124,23 @@ pub fn run_android(project: &Project, profile: Profile) -> Result<i32> {
     let apk = build_android(project, profile)?;
 
     if apk.to_string_lossy().contains("-unsigned") {
-        return Err(Error::new(format!("{} 没有签名，无法安装到设备", apk.display()))
-            .hint("检查 android/keystore.properties 是否存在（vkx new 时会生成）"));
+        return Err(
+            Error::new(format!("{} 没有签名，无法安装到设备", apk.display()))
+                .hint("检查 android/keystore.properties 是否存在（vkx new 时会生成）"),
+        );
     }
 
     let adb = toolchain::adb().ok_or_else(|| {
-        Error::new("找不到 adb")
-            .hint("安装脚本会把它装在 ~/.vkx/android/sdk/platform-tools")
+        Error::new("找不到 adb").hint("安装脚本会把它装在 ~/.vkx/android/sdk/platform-tools")
     })?;
 
     ensure_device_connected(&adb)?;
 
     ui::step("安装到设备");
-    toolchain::run(Command::new(&adb).arg("install").arg("-r").arg(&apk), "adb install")?;
+    toolchain::run(
+        Command::new(&adb).arg("install").arg("-r").arg(&apk),
+        "adb install",
+    )?;
 
     ui::step("启动");
     let activity = format!("{}/{}.MainActivity", project.package_id, project.package_id);
@@ -137,14 +152,25 @@ pub fn run_android(project: &Project, profile: Profile) -> Result<i32> {
 
     ui::info("下面是设备日志（Ctrl-C 退出）：");
     let _ = Command::new(&adb)
-        .args(["logcat", "-s", "SDL", "SDL/APP", "vkx", "AndroidRuntime", "DEBUG"])
+        .args([
+            "logcat",
+            "-s",
+            "SDL",
+            "SDL/APP",
+            "vkx",
+            "AndroidRuntime",
+            "DEBUG",
+        ])
         .status();
     Ok(0)
 }
 
 fn ensure_device_connected(adb: &Path) -> Result<()> {
     let listing = toolchain::capture(adb, &["devices"]).unwrap_or_default();
-    let connected = listing.lines().skip(1).any(|line| line.trim_end().ends_with("device"));
+    let connected = listing
+        .lines()
+        .skip(1)
+        .any(|line| line.trim_end().ends_with("device"));
     if connected {
         return Ok(());
     }
@@ -186,15 +212,20 @@ pub fn configure_ios(project: &Project, device: bool) -> Result<PathBuf> {
             .hint("装好后执行：sudo xcode-select -s /Applications/Xcode.app"));
     }
     if !project.root.join("ios/Info.plist").is_file() {
-        return Err(Error::new("工程里没有 ios/Info.plist")
-            .hint("用新版 vkx new 生成的工程才带 iOS 支持"));
+        return Err(
+            Error::new("工程里没有 ios/Info.plist").hint("用新版 vkx new 生成的工程才带 iOS 支持")
+        );
     }
 
     let cmake = toolchain::require_cmake()?;
     let slangc = toolchain::require_slangc()?;
     let moltenvk = toolchain::moltenvk_lib(device)?;
 
-    let sysroot = if device { "iphoneos" } else { "iphonesimulator" };
+    let sysroot = if device {
+        "iphoneos"
+    } else {
+        "iphonesimulator"
+    };
     let build_dir = ios_build_dir(project, device);
 
     ui::step(&format!("生成 Xcode 工程 ({sysroot})"));
@@ -235,7 +266,10 @@ pub fn configure_ios(project: &Project, device: bool) -> Result<PathBuf> {
 
     let xcodeproj = build_dir.join(format!("{}.xcodeproj", project.name));
     if !xcodeproj.is_dir() {
-        return Err(Error::new(format!("配置完成，但没找到 {}", xcodeproj.display())));
+        return Err(Error::new(format!(
+            "配置完成，但没找到 {}",
+            xcodeproj.display()
+        )));
     }
 
     // 这个工程可以直接用 Xcode 打开，调试、连真机都在里面做。
@@ -258,7 +292,11 @@ pub fn build_ios(project: &Project, profile: Profile, device: bool) -> Result<Pa
 
     let cmake = toolchain::require_cmake()?;
     let build_dir = ios_build_dir(project, device);
-    let sysroot = if device { "iphoneos" } else { "iphonesimulator" };
+    let sysroot = if device {
+        "iphoneos"
+    } else {
+        "iphonesimulator"
+    };
 
     ui::step("编译");
     let mut build = Command::new(&cmake);
@@ -301,7 +339,9 @@ pub fn run_ios(project: &Project, profile: Profile, device: bool) -> Result<i32>
     let simulator = boot_simulator()?;
     ui::step("安装到模拟器");
     toolchain::run(
-        Command::new("xcrun").args(["simctl", "install", &simulator]).arg(&app),
+        Command::new("xcrun")
+            .args(["simctl", "install", &simulator])
+            .arg(&app),
         "simctl install",
     )?;
 
@@ -339,13 +379,20 @@ fn boot_simulator() -> Result<String> {
         &["simctl", "list", "devices", "available", "iPhone"],
     )
     .unwrap_or_default();
-    let udid = available.lines().filter_map(parse_udid).next().ok_or_else(|| {
-        Error::new("没有可用的 iOS 模拟器")
-            .hint("Xcode → Settings → Components 里安装一个 iOS Simulator 运行时")
-    })?;
+    let udid = available
+        .lines()
+        .filter_map(parse_udid)
+        .next()
+        .ok_or_else(|| {
+            Error::new("没有可用的 iOS 模拟器")
+                .hint("Xcode → Settings → Components 里安装一个 iOS Simulator 运行时")
+        })?;
 
     ui::step("启动模拟器");
-    toolchain::run(Command::new("xcrun").args(["simctl", "boot", &udid]), "simctl boot")?;
+    toolchain::run(
+        Command::new("xcrun").args(["simctl", "boot", &udid]),
+        "simctl boot",
+    )?;
     // 开机要几秒，没等完就 install 会失败。
     toolchain::run(
         Command::new("xcrun").args(["simctl", "bootstatus", &udid, "-b"]),

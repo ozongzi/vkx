@@ -140,6 +140,7 @@ GRADLE=8.13
 JDK=21
 MOLTENVK=1.4.2
 VULKAN_SDK=1.4.357        # loader + 校验层，见下面 vulkan-sdk 组件的说明
+CLANG_FORMAT=22.1.8      # 代码格式化，见下面 clang-format 组件的说明
 LLVM_MINGW=20250910
 SDL=3.4.14
 VULKAN_HEADERS=1.4.313
@@ -248,6 +249,18 @@ fetch vulkan-sdk "$VULKAN_SDK" linux-x86_64     "$VKSDK-linux-x86_64.tar.gz"    
 fetch vulkan-sdk "$VULKAN_SDK" linux-aarch64    "$VKSDK-linux-aarch64.tar.gz"   tools/vulkan
 fetch vulkan-sdk "$VULKAN_SDK" windows-x86_64   "$VKSDK-windows-x86_64.tar.gz"  tools/vulkan
 fetch vulkan-sdk "$VULKAN_SDK" windows-aarch64  "$VKSDK-windows-aarch64.tar.gz" tools/vulkan
+
+
+# --- clang-format（代码格式化）---------------------------------------------
+# 上游只以 PyPI wheel 的形式提供单独的二进制（LLVM 官方包是几百 MB 的整套工具链，
+# 里面九成用不上）。wheel 本身就是 zip，解开取 clang_format/data/bin 那一层即可。
+# 版本和 LLVM 对齐，配置文件在工程根目录的 .clang-format。
+fetch clang-format "$CLANG_FORMAT" macos-arm64      "https://files.pythonhosted.org/packages/2e/55/539cc1036dae16659f50500ca34838cc5b16cd3e98e3faaf164186b98093/clang_format-22.1.8-py2.py3-none-macosx_11_0_arm64.whl" tools/clang-format clang_format/data/bin
+fetch clang-format "$CLANG_FORMAT" macos-x86_64     "https://files.pythonhosted.org/packages/5d/d8/29b9db6098da1a011ca3f7560c3942fa81404dbbb4367c3bd1d5c435da3b/clang_format-22.1.8-py2.py3-none-macosx_10_9_x86_64.whl" tools/clang-format clang_format/data/bin
+fetch clang-format "$CLANG_FORMAT" linux-x86_64     "https://files.pythonhosted.org/packages/e5/88/b82c066fa807da4ca2518fecf79071361f6324b77375e5e92c059c0697fd/clang_format-22.1.8-py2.py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl" tools/clang-format clang_format/data/bin
+fetch clang-format "$CLANG_FORMAT" linux-aarch64    "https://files.pythonhosted.org/packages/50/25/a9734da014eecc1f54c051ad643a28f2f6643dcc812ac59320e80e2b1a3b/clang_format-22.1.8-py2.py3-none-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl" tools/clang-format clang_format/data/bin
+fetch clang-format "$CLANG_FORMAT" windows-x86_64   "https://files.pythonhosted.org/packages/08/60/c6783b3190a8f741107a44912a11c39c1a51e254e86a4c43cb0151cea0dd/clang_format-22.1.8-py2.py3-none-win_amd64.whl" tools/clang-format clang_format/data/bin
+fetch clang-format "$CLANG_FORMAT" windows-aarch64  "https://files.pythonhosted.org/packages/43/ca/7e1fa4a6044c37c37356bb18fc938d2811754231e448aaffc192dc3774ce/clang_format-22.1.8-py2.py3-none-win_arm64.whl" tools/clang-format clang_format/data/bin
 
 # --- Windows 上自带的 C++ 工具链（免装 Visual Studio）------------------------
 fetch llvm-mingw "$LLVM_MINGW" windows-x86_64  "$GH/mstorsjo/llvm-mingw/releases/download/$LLVM_MINGW/llvm-mingw-$LLVM_MINGW-ucrt-x86_64.zip"  tools/llvm-mingw

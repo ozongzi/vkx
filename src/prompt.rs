@@ -25,7 +25,11 @@ pub fn ask(
 
     loop {
         match default {
-            Some(value) => eprint!("  {} {} › ", ui::bold(question), ui::dim(&format!("({value})"))),
+            Some(value) => eprint!(
+                "  {} {} › ",
+                ui::bold(question),
+                ui::dim(&format!("({value})"))
+            ),
             None => eprint!("  {} › ", ui::bold(question)),
         }
         std::io::stderr().flush()?;
@@ -38,7 +42,11 @@ pub fn ask(
         }
 
         let answer = line.trim();
-        let answer = if answer.is_empty() { default.unwrap_or_default() } else { answer };
+        let answer = if answer.is_empty() {
+            default.unwrap_or_default()
+        } else {
+            answer
+        };
 
         if answer.is_empty() {
             ui::warn("不能为空");

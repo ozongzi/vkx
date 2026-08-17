@@ -138,7 +138,7 @@ $ vkx new
   bin/vkx
   env.sh                       PATH / JAVA_HOME / ANDROID_HOME，安装脚本接进你的 shell
   installed.txt                已装组件和版本，用于增量升级
-  tools/{cmake,ninja,slang,jdk,gradle,moltenvk,vulkan,llvm-mingw}
+  tools/{cmake,ninja,slang,clang-format,jdk,gradle,moltenvk,vulkan,llvm-mingw}
   android/sdk/{cmdline-tools,platform-tools,build-tools,platforms,ndk}
   src/{sdl3,sdl3-android,vulkan-headers,volk}    构建时离线取用
 ```

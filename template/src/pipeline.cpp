@@ -17,8 +17,8 @@ bool Application::create_pipeline()
     // 着色器模块只在创建管线时用到，函数结尾就销毁。
     VkShaderModule vert_module = VK_NULL_HANDLE;
     VkShaderModule frag_module = VK_NULL_HANDLE;
-    if (!create_shader_module(TRIANGLE_VERT_SPV, TRIANGLE_VERT_SPV_SIZE, &vert_module)
-        || !create_shader_module(TRIANGLE_FRAG_SPV, TRIANGLE_FRAG_SPV_SIZE, &frag_module)) {
+    if (!create_shader_module(TRIANGLE_VERT_SPV, TRIANGLE_VERT_SPV_SIZE, &vert_module) ||
+        !create_shader_module(TRIANGLE_FRAG_SPV, TRIANGLE_FRAG_SPV_SIZE, &frag_module)) {
         return false;
     }
 
@@ -45,7 +45,7 @@ bool Application::create_pipeline()
     stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
     stages[0].module = vert_module;
     stages[0].pName = "main";
-    stages[0].pSpecializationInfo = &specialization;   // 色域只有顶点着色器用得到
+    stages[0].pSpecializationInfo = &specialization;  // 色域只有顶点着色器用得到
     stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
     stages[1].module = frag_module;
@@ -56,16 +56,16 @@ bool Application::create_pipeline()
     VkVertexInputBindingDescription binding{};
     binding.binding = 0;
     binding.stride = sizeof(Vertex);
-    binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;   // 每个顶点前进一步
+    binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;  // 每个顶点前进一步
 
     VkVertexInputAttributeDescription attributes[2]{};
     attributes[0].location = 0;
     attributes[0].binding = 0;
-    attributes[0].format = VK_FORMAT_R32G32_SFLOAT;      // float2 position
+    attributes[0].format = VK_FORMAT_R32G32_SFLOAT;  // float2 position
     attributes[0].offset = offsetof(Vertex, position);
     attributes[1].location = 1;
     attributes[1].binding = 0;
-    attributes[1].format = VK_FORMAT_R32G32B32_SFLOAT;   // float3 oklch
+    attributes[1].format = VK_FORMAT_R32G32B32_SFLOAT;  // float3 oklch
     attributes[1].offset = offsetof(Vertex, oklch);
     // 加新的顶点属性（UV、法线……）：在 Vertex 里加字段，这里加一条 attribute，
     // 把下面的 vertexAttributeDescriptionCount 一起改掉，着色器里也加对应的 location。
@@ -92,9 +92,9 @@ bool Application::create_pipeline()
     // 光栅化：图元怎么变成像素。
     VkPipelineRasterizationStateCreateInfo rasterization{};
     rasterization.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-    rasterization.polygonMode = VK_POLYGON_MODE_FILL;          // 填充（改 LINE 可看线框）
-    rasterization.cullMode = VK_CULL_MODE_NONE;                // 不剔除背面
-    rasterization.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE; // 逆时针为正面
+    rasterization.polygonMode = VK_POLYGON_MODE_FILL;           // 填充（改 LINE 可看线框）
+    rasterization.cullMode = VK_CULL_MODE_NONE;                 // 不剔除背面
+    rasterization.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;  // 逆时针为正面
     rasterization.lineWidth = 1.0f;
 
     // 多重采样抗锯齿，这里关着（每像素一个采样点）。
@@ -105,8 +105,8 @@ bool Application::create_pipeline()
     // 颜色混合：直接覆盖，RGBA 四个通道都写。
     // 做半透明时在这里打开 blendEnable 并配置混合因子。
     VkPipelineColorBlendAttachmentState blend_attachment{};
-    blend_attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT
-                                   | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    blend_attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                                      VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 
     VkPipelineColorBlendStateCreateInfo color_blend{};
     color_blend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;

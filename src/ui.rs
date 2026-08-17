@@ -5,13 +5,15 @@ use crate::error::Error;
 
 fn use_color() -> bool {
     static COLOR: OnceLock<bool> = OnceLock::new();
-    *COLOR.get_or_init(|| {
-        std::env::var_os("NO_COLOR").is_none() && std::io::stderr().is_terminal()
-    })
+    *COLOR.get_or_init(|| std::env::var_os("NO_COLOR").is_none() && std::io::stderr().is_terminal())
 }
 
 fn paint(code: &str, text: &str) -> String {
-    if use_color() { format!("\x1b[{code}m{text}\x1b[0m") } else { text.to_string() }
+    if use_color() {
+        format!("\x1b[{code}m{text}\x1b[0m")
+    } else {
+        text.to_string()
+    }
 }
 
 pub fn bold(text: &str) -> String {

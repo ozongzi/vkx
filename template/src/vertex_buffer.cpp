@@ -26,7 +26,7 @@ bool Application::create_vertex_buffer()
     // usage 告诉驱动这块缓冲拿来干什么，驱动可能据此选择不同的内部布局。
     // 想再拿它当索引缓冲，就按位或上 VK_BUFFER_USAGE_INDEX_BUFFER_BIT。
     buffer_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;   // 只有一个队列族会用它
+    buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;  // 只有一个队列族会用它
     VKX_CHECK(vkCreateBuffer(device, &buffer_info, nullptr, &vertex_buffer));
 
     // 驱动给出这个 buffer 实际需要多大（可能比 size 大，有对齐要求）、
@@ -41,15 +41,16 @@ bool Application::create_vertex_buffer()
     // 数据量大起来之后，一般改成 device-local 显存 + 一个临时的「暂存缓冲」
     // 上传：先写进 host-visible 的暂存缓冲，再用 vkCmdCopyBuffer 拷到显卡本地。
     uint32_t memory_type = 0;
-    if (!find_memory_type(requirements.memoryTypeBits,
-                        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                        &memory_type)) {
+    if (!find_memory_type(
+            requirements.memoryTypeBits,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            &memory_type)) {
         return false;
     }
 
     VkMemoryAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    alloc_info.allocationSize = requirements.size;   // 用驱动给出的大小，而不是 sizeof
+    alloc_info.allocationSize = requirements.size;  // 用驱动给出的大小，而不是 sizeof
     alloc_info.memoryTypeIndex = memory_type;
     VKX_CHECK(vkAllocateMemory(device, &alloc_info, nullptr, &vertex_memory));
     VKX_CHECK(vkBindBufferMemory(device, vertex_buffer, vertex_memory, 0));

@@ -49,8 +49,8 @@ bool Application::record_command_buffer(VkCommandBuffer cmd, uint32_t image_inde
     color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
     color_attachment.imageView = swapchain_views[image_index];
     color_attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;    // 先清屏
-    color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;  // 画完留下来
+    color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;              // 先清屏
+    color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;            // 画完留下来
     color_attachment.clearValue.color = {{0.02f, 0.02f, 0.05f, 1.0f}};  // 背景色
 
     VkRenderingInfo rendering{};
@@ -110,7 +110,7 @@ bool Application::draw_frame()
             return false;
         }
         if (swapchain == VK_NULL_HANDLE) {
-            SDL_Delay(16);   // 仍然最小化，空转一帧的时间
+            SDL_Delay(16);  // 仍然最小化，空转一帧的时间
             return true;
         }
     }
@@ -121,8 +121,8 @@ bool Application::draw_frame()
     // 向交换链要一张可以画的图像。函数会立刻返回，图像真正可用时
     // image_available 才被触发，所以下面提交时要等这个信号量。
     uint32_t image_index = 0;
-    VkResult acquired = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX,
-                                              image_available[frame], VK_NULL_HANDLE, &image_index);
+    VkResult acquired = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, image_available[frame],
+                                              VK_NULL_HANDLE, &image_index);
     if (acquired == VK_ERROR_OUT_OF_DATE_KHR) {
         // 交换链和窗口尺寸对不上了，这帧作废，下一帧重建。
         swapchain_dirty = true;

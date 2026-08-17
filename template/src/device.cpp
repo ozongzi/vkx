@@ -74,17 +74,17 @@ bool Application::pick_physical_device()
     }
 
     if (physical_device == VK_NULL_HANDLE) {
-        report_error("没有满足要求的显卡。\n\n"
-                    "本工程需要 Vulkan 1.3，并支持 dynamicRendering 与 synchronization2。\n"
-                    "请先更新显卡驱动；若显卡确实过旧，需改用 VkRenderPass 的写法。");
+        report_error(
+            "没有满足要求的显卡。\n\n"
+            "本工程需要 Vulkan 1.3，并支持 dynamicRendering 与 synchronization2。\n"
+            "请先更新显卡驱动；若显卡确实过旧，需改用 VkRenderPass 的写法。");
         return false;
     }
 
     VkPhysicalDeviceProperties props{};
     vkGetPhysicalDeviceProperties(physical_device, &props);
     SDL_Log("vkx: 使用显卡 %s (Vulkan %u.%u.%u)", props.deviceName,
-            VK_API_VERSION_MAJOR(props.apiVersion),
-            VK_API_VERSION_MINOR(props.apiVersion),
+            VK_API_VERSION_MAJOR(props.apiVersion), VK_API_VERSION_MINOR(props.apiVersion),
             VK_API_VERSION_PATCH(props.apiVersion));
     return true;
 }
@@ -110,8 +110,8 @@ bool Application::create_device()
     // 特性默认全关，要用的必须显式打开。
     VkPhysicalDeviceVulkan13Features features13{};
     features13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
-    features13.dynamicRendering = VK_TRUE;   // 不用 VkRenderPass 直接开画
-    features13.synchronization2 = VK_TRUE;   // 新版屏障和提交结构
+    features13.dynamicRendering = VK_TRUE;  // 不用 VkRenderPass 直接开画
+    features13.synchronization2 = VK_TRUE;  // 新版屏障和提交结构
 
     VkPhysicalDeviceFeatures2 features{};
     features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;

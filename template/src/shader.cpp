@@ -18,7 +18,7 @@ bool Application::create_shader_module(const unsigned char* code, size_t size, V
 {
     VkShaderModuleCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    info.codeSize = size;   // 单位是字节，不是 uint32 的个数
+    info.codeSize = size;  // 单位是字节，不是 uint32 的个数
     // pCode 要求按 4 字节对齐（SPIR-V 是 32 位字的序列）。
     // 生成的头文件里那个数组带了 alignas(uint32_t)，所以这个 cast 是安全的。
     info.pCode = reinterpret_cast<const uint32_t*>(code);

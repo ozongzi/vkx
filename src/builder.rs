@@ -66,8 +66,14 @@ fn add_generator(command: &mut Command) -> Result<()> {
         })?;
         let bin = mingw.join("bin");
         command
-            .arg(format!("-DCMAKE_C_COMPILER={}", bin.join("clang.exe").display()))
-            .arg(format!("-DCMAKE_CXX_COMPILER={}", bin.join("clang++.exe").display()))
+            .arg(format!(
+                "-DCMAKE_C_COMPILER={}",
+                bin.join("clang.exe").display()
+            ))
+            .arg(format!(
+                "-DCMAKE_CXX_COMPILER={}",
+                bin.join("clang++.exe").display()
+            ))
             // 静态链接运行时，产物不依赖 llvm-mingw 的 DLL。
             .arg("-DCMAKE_EXE_LINKER_FLAGS=-static");
     }
@@ -99,7 +105,11 @@ pub fn build(project: &Project, profile: Profile) -> Result<PathBuf> {
     let slangc = toolchain::require_slangc()?;
     let build_dir = project.build_dir(profile.dir());
 
-    ui::step(&format!("配置 {} ({})", project.name, profile.cmake_config()));
+    ui::step(&format!(
+        "配置 {} ({})",
+        project.name,
+        profile.cmake_config()
+    ));
     let mut configure = Command::new(&cmake);
     configure
         .arg("-S")
@@ -113,7 +123,10 @@ pub fn build(project: &Project, profile: Profile) -> Result<PathBuf> {
     add_offline_sources(&mut configure);
 
     toolchain::run(&mut configure, "CMake 配置").map_err(|e| {
-        e.hint(format!("上面是 CMake 的原始输出。删掉 {} 可以从头再来", build_dir.display()))
+        e.hint(format!(
+            "上面是 CMake 的原始输出。删掉 {} 可以从头再来",
+            build_dir.display()
+        ))
     })?;
 
     ui::step("编译");
@@ -137,15 +150,20 @@ fn locate_executable(project: &Project, profile: Profile) -> Result<PathBuf> {
         build_dir.join(name),
         build_dir.join(format!("{name}.exe")),
         build_dir.join(profile.cmake_config()).join(name),
-        build_dir.join(profile.cmake_config()).join(format!("{name}.exe")),
+        build_dir
+            .join(profile.cmake_config())
+            .join(format!("{name}.exe")),
     ];
 
     candidates
         .into_iter()
         .find(|path| path.is_file())
         .ok_or_else(|| {
-            Error::new(format!("编译完成，但在 {} 里没找到可执行文件", build_dir.display()))
-                .hint("如果你改过 CMakeLists.txt 里的 target 名字，vkx.toml 的 name 也要一起改")
+            Error::new(format!(
+                "编译完成，但在 {} 里没找到可执行文件",
+                build_dir.display()
+            ))
+            .hint("如果你改过 CMakeLists.txt 里的 target 名字，vkx.toml 的 name 也要一起改")
         })
 }
 

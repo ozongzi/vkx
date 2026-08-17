@@ -22,16 +22,16 @@
 // 加新资源在链子末尾加一行，同时在下面的析构函数里加上对应的销毁。
 bool Application::init()
 {
-    return init_platform()          // platform.cpp   SDL、Vulkan 运行时、窗口
-        && create_instance()        // instance.cpp   VkInstance
-        && create_debug_messenger()  // debug.cpp      校验层的消息出口
-        && create_surface()         // surface.cpp    窗口 -> VkSurfaceKHR
-        && pick_physical_device()    // device.cpp     挑一块能用的显卡
-        && create_device()          // device.cpp     逻辑设备 + 队列
-        && create_swapchain()       // swapchain.cpp  交换链及其图像
-        && create_vertex_buffer()    // vertex_buffer.cpp
-        && create_pipeline()        // pipeline.cpp
-        && create_frame_resources(); // frame.cpp      命令缓冲、信号量、栅栏
+    return init_platform()               // platform.cpp   SDL、Vulkan 运行时、窗口
+           && create_instance()          // instance.cpp   VkInstance
+           && create_debug_messenger()   // debug.cpp      校验层的消息出口
+           && create_surface()           // surface.cpp    窗口 -> VkSurfaceKHR
+           && pick_physical_device()     // device.cpp     挑一块能用的显卡
+           && create_device()            // device.cpp     逻辑设备 + 队列
+           && create_swapchain()         // swapchain.cpp  交换链及其图像
+           && create_vertex_buffer()     // vertex_buffer.cpp
+           && create_pipeline()          // pipeline.cpp
+           && create_frame_resources();  // frame.cpp      命令缓冲、信号量、栅栏
 }
 
 // ---------------------------------------------------------------------------
@@ -50,22 +50,22 @@ void Application::run()
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             switch (event.type) {
-            case SDL_EVENT_QUIT:            // 关窗口 / 系统要求退出
-                running = false;
-                break;
-            case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:   // 尺寸变了，交换链要重建
-                // 这里只做个记号，不画也不重建。下一次 draw_frame() 开头
-                // 看到这个标志才动手——事件处理和绘制保持解耦。
-                swapchain_dirty = true;
-                break;
-            case SDL_EVENT_KEY_DOWN:
-                if (event.key.key == SDLK_ESCAPE) {
+                case SDL_EVENT_QUIT:  // 关窗口 / 系统要求退出
                     running = false;
-                }
-                break;
-            // 鼠标、触摸、手柄等事件在这里加分支处理。
-            default:
-                break;
+                    break;
+                case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:  // 尺寸变了，交换链要重建
+                    // 这里只做个记号，不画也不重建。下一次 draw_frame() 开头
+                    // 看到这个标志才动手——事件处理和绘制保持解耦。
+                    swapchain_dirty = true;
+                    break;
+                case SDL_EVENT_KEY_DOWN:
+                    if (event.key.key == SDLK_ESCAPE) {
+                        running = false;
+                    }
+                    break;
+                // 鼠标、触摸、手柄等事件在这里加分支处理。
+                default:
+                    break;
             }
         }
 
@@ -99,13 +99,13 @@ void Application::run()
 Application::~Application()
 {
     if (device != VK_NULL_HANDLE) {
-        vkDeviceWaitIdle(device);   // 等 GPU 用完这些对象再删
+        vkDeviceWaitIdle(device);  // 等 GPU 用完这些对象再删
 
         for (uint32_t i = 0; i < FRAMES_IN_FLIGHT; ++i) {
             vkDestroySemaphore(device, image_available[i], nullptr);
             vkDestroyFence(device, in_flight[i], nullptr);
         }
-        vkDestroyCommandPool(device, command_pool, nullptr);   // 命令缓冲跟着池一起没
+        vkDestroyCommandPool(device, command_pool, nullptr);  // 命令缓冲跟着池一起没
         vkDestroyPipeline(device, pipeline, nullptr);
         vkDestroyPipelineLayout(device, pipeline_layout, nullptr);
         vkDestroyBuffer(device, vertex_buffer, nullptr);

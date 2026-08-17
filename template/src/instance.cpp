@@ -62,8 +62,8 @@ bool Application::create_instance()
     std::vector<VkLayerProperties> layer_props(layer_count);
     vkEnumerateInstanceLayerProperties(&layer_count, layer_props.data());
 
-    const bool has_validation = std::any_of(
-        layer_props.begin(), layer_props.end(), [](const VkLayerProperties& l) {
+    const bool has_validation =
+        std::any_of(layer_props.begin(), layer_props.end(), [](const VkLayerProperties& l) {
             return SDL_strcmp(l.layerName, "VK_LAYER_KHRONOS_validation") == 0;
         });
     // 光有层还不够：层要把消息交出来，得靠 debug utils 这个扩展。两者缺一不可。
