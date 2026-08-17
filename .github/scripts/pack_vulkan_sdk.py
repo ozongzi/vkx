@@ -26,8 +26,8 @@
 import argparse
 import hashlib
 import json
-import os
 import shutil
+import subprocess
 import sys
 import tarfile
 from pathlib import Path
@@ -86,6 +86,37 @@ def find_one(root: Path, filename: str) -> Path:
     return hits[0]
 
 
+def strip_elf(path: Path) -> None:
+    """去掉 ELF 共享库里的调试符号。
+
+    LunarG 的 Linux 包里，校验层带着完整调试信息，一个 .so 就有 392 MB
+    （同一个东西自己编出来是 37 MB）。这些符号只在调试校验层本身时有用，
+    对使用者没有价值，却要占满每个人的 ~/.vkx。
+
+    用 --strip-unneeded：它保留 .dynsym，也就是 dlopen 之后按名字取函数
+    仍然可用，只丢掉重定位不需要的那些。macOS 和 Windows 的产物本来就不带
+    调试信息，不需要这一步。
+    """
+    if shutil.which("strip") is None:
+        print(f"    找不到 strip，跳过 {path.name}")
+        return
+    before = path.stat().st_size
+    subprocess.run(["strip", "--strip-unneeded", str(path)], check=True)
+    after = path.stat().st_size
+    print(f"    strip {path.name}: {before // 1048576} MB -> {after // 1048576} MB")
+
+    # 层是靠 dlopen + 按名字取符号加载的，strip 过头会让 loader 找不到入口。
+    # 这里确认关键导出符号还在。
+    if shutil.which("nm"):
+        out = subprocess.run(["nm", "-D", "--defined-only", str(path)],
+                             capture_output=True, text=True).stdout
+        for symbol in ("vkGetInstanceProcAddr", "vkNegotiateLoaderLayerInterfaceVersion"):
+            mark = "在" if symbol in out else "丢了"
+            print(f"      导出符号 {symbol}: {mark}")
+            if symbol not in out:
+                raise SystemExit(f"错误: strip 之后 {symbol} 不见了")
+
+
 def rewrite_json(path: Path, key: str) -> None:
     """把 json 里的 library_path 改写成 ../../../lib/<文件名>。
 
@@ -130,6 +161,8 @@ def main() -> int:
         # 直接落成规范名字。运行时用的是绝对路径，不需要保留链接结构。
         shutil.copy(src, dest)
         print(f"    {src.relative_to(root)}  ->  {dest_rel}  ({dest.stat().st_size // 1024} KB)")
+        if dest.suffix == ".so":
+            strip_elf(dest)
 
     print("==> 改写 json 里的库路径")
     rewrite_json(stage / "share/vulkan/explicit_layer.d/VkLayer_khronos_validation.json", "layer")

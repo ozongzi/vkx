@@ -19,6 +19,10 @@ on:
         description: "SDK 版本，用于产物命名和 Release 标签（如 1.4.357）"
         required: true
         default: "1.4.357"
+      only_platforms:
+        description: "只跑这些平台，逗号分隔；留空表示全部。修一个平台时不必重跑 linux-aarch64 那个二十多分钟的源码构建。"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -30,6 +34,7 @@ jobs:
   extract:
     name: ${{ matrix.platform }}
     runs-on: ${{ matrix.os }}
+    if: inputs.only_platforms == '' || contains(inputs.only_platforms, matrix.platform)
     strategy:
       fail-fast: false
       matrix:
@@ -115,6 +120,7 @@ jobs:
   build-linux-arm:
     name: linux-aarch64（源码构建）
     runs-on: ubuntu-24.04-arm
+    if: inputs.only_platforms == '' || contains(inputs.only_platforms, 'linux-aarch64')
     steps:
       - uses: actions/checkout@v4
 
@@ -161,6 +167,10 @@ jobs:
   release:
     needs: [extract, build-linux-arm]
     runs-on: ubuntu-latest
+    # 用 only_platforms 跑部分平台时，被跳过的 job 会让默认的 needs 判定不通过。
+    # 这个条件的意思是「只要没有失败也没有取消就发布」，跳过不算失败。
+    # 发布是按文件名覆盖，所以只跑一个平台时，其余平台的产物原样留在 Release 里。
+    if: ${{ !failure() && !cancelled() }}
     steps:
       - uses: actions/download-artifact@v4
         with:
