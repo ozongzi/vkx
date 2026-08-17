@@ -91,14 +91,21 @@ def rewrite_json(path: Path, key: str) -> None:
 
     key 是顶层字段名：层用 "layer"，ICD 用 "ICD"。
     """
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     before = data[key]["library_path"]
-    data[key]["library_path"] = f"../../../lib/{Path(before).name}"
-    path.write_text(json.dumps(data, indent=4))
+    # 上游在 Windows 上写的是反斜杠，这里两种分隔符都要能切。
+    name = before.replace("\\", "/").rsplit("/", 1)[-1]
+    data[key]["library_path"] = f"../../../lib/{name}"
+    path.write_text(json.dumps(data, indent=4), encoding="utf-8")
     print(f"    {path.name}: library_path {before} -> {data[key]['library_path']}")
 
 
 def main() -> int:
+    # Windows 上 Python 的 stdout 默认是 cp1252，编码不了中文，print 会直接抛
+    # UnicodeEncodeError 把整个步骤搞崩。这里显式改成 UTF-8。
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(encoding="utf-8", errors="replace")
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--sdk-root", required=True)
     ap.add_argument("--platform", required=True)
