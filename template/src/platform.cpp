@@ -53,9 +53,11 @@ bool Application::init_platform()
     // SDL_WINDOW_RESIZABLE      允许拖动边框改大小（交换链会跟着重建）
     // SDL_WINDOW_HIGH_PIXEL_DENSITY  在 Retina 屏上拿到真实像素数的画布，
     //                           而不是被系统放大的模糊图像
-    window =
-        SDL_CreateWindow("{{PROJECT_NAME}}", 1280, 720,
-                         SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+    // 单独拎出来，是为了让这一行的长度不受工程名影响：工程名是模版占位符，
+    // 长短不定，写在一起的话 clang-format 会按名字长度选择不同的折行方式。
+    const SDL_WindowFlags flags =
+        SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+    window = SDL_CreateWindow("{{PROJECT_NAME}}", 1280, 720, flags);
     if (window == nullptr) {
         report_error("SDL_CreateWindow 失败: %s", SDL_GetError());
         return false;

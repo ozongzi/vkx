@@ -39,7 +39,9 @@ void report_error(const char* format, ...)
     SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "%s", message);
 
     if (!stderr_is_terminal()) {
-        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "{{PROJECT_NAME}}", message, nullptr);
+        // 标题拎成常量，同样是为了让这一行的长度不受工程名影响。
+        const char* title = "{{PROJECT_NAME}}";
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title, message, nullptr);
     }
 }
 
