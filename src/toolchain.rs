@@ -252,7 +252,7 @@ pub fn llvm_mingw() -> Option<PathBuf> {
 
 /// 返回 ~/.vkx/src/<name>，不存在则返回 None（届时 CMake 会自己去联网拉）。
 pub fn source_dir(name: &str) -> Option<PathBuf> {
-    let dir = vkx_home().join("src").join(name);
+    let dir = vkx_home().join("sdk/sources").join(name);
     dir.is_dir().then_some(dir)
 }
 

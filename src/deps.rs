@@ -89,12 +89,29 @@ fn set(project: &Project, name: &str, on: bool) -> Result<()> {
 
 pub fn add(project: &Project, name: &str) -> Result<u8> {
     let key = find(name)?;
+    if let Some(lib) = SOURCE_LIBS.iter().find(|l| l.key == key)
+        && let Some(why) = lib.blocked
+    {
+        return Err(crate::error::Error::new(
+            crate::error::Code::MissingComponent,
+            format!("{key} 现在还打不开：{why}"),
+            "先用别的方案；这个库补齐之后 vkx add 就会放行",
+        ));
+    }
     if project.libs.iter().any(|l| l == key) {
         ui::info(&format!("{key} 已经打开了。"));
         return Ok(0);
     }
     set(project, key, true)?;
     ui::step(&format!("已打开 {key}"));
+
+    // 这两个库是从源码编的，源码在 SDK 的 sources 组件里。现在就取——
+    // 打开一个库之后紧接着 build 才是常态，等到 CMake 那一步再说「找不到
+    // 源码」，中间还隔着一次配置失败。
+    if crate::toolchain::source_dir(key).is_none() {
+        crate::fetch::run(Some("sources"), false)?;
+    }
+
     ui::info("下次 vkx build 会把它编进来，第一次会多花几分钟。");
     Ok(0)
 }
@@ -119,12 +136,12 @@ pub fn list(project: &Project) -> Result<u8> {
     ui::step("要从源码编（vkx add 打开）");
     for lib in SOURCE_LIBS {
         let on = project.libs.iter().any(|l| l == lib.key);
-        ui::info(&format!(
-            "{:<24} {:<6} {}",
-            lib.key,
-            if on { "已打开" } else { "关闭" },
-            lib.about
-        ));
+        let state = match (lib.blocked, on) {
+            (Some(_), _) => "缺依赖",
+            (None, true) => "已打开",
+            (None, false) => "关闭",
+        };
+        ui::info(&format!("{:<24} {:<6} {}", lib.key, state, lib.about));
     }
     Ok(0)
 }

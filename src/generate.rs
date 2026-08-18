@@ -339,9 +339,21 @@ endif()
             if !project.libs.iter().any(|l| l == lib.key) {
                 continue;
             }
+            // 找不到就现在报错。之前是填一个猜的路径进去，结果 CMake 在
+            // add_subdirectory 那一行说「目录不存在」——那个错离真正的原因
+            // （sources 组件没取）隔了两层，读者根本不知道该干什么。
             let dir = crate::toolchain::source_dir(lib.key)
-                .map(|d| d.display().to_string())
-                .unwrap_or_else(|| format!("$ENV{{HOME}}/.vkx/sdk/src/{}", lib.key));
+                .ok_or_else(|| {
+                    crate::error::Error::new(
+                        crate::error::Code::MissingComponent,
+                        format!("{} 打开了，但 SDK 里没有它的源码", lib.key),
+                        "执行 `vkx fetch --component sources` 取回来",
+                    )
+                    .hint(&format!("或者 `vkx remove {}` 关掉它", lib.key))
+                })?
+                .join(lib.cmake_subdir)
+                .display()
+                .to_string();
             s.push_str(&format!(
                 "\n# {about}\nadd_subdirectory(\"{dir}\" {key} EXCLUDE_FROM_ALL)\n\
                  target_link_libraries(${{VKX_TARGET}} PRIVATE {target})\n",

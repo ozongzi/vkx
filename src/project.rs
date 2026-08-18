@@ -251,6 +251,13 @@ pub struct SourceLib {
     pub key: &'static str,
     /// CMake 里 add_subdirectory 之后要链的 target 名
     pub target: &'static str,
+    /// CMakeLists.txt 在源码树里的位置，相对仓库根。
+    /// Jolt 的工程在 Build/ 下，不在根上——直接 add_subdirectory 仓库根会说
+    /// 「这个目录里没有 CMakeLists.txt」。
+    pub cmake_subdir: &'static str,
+    /// 还缺什么才能编。填了就说明现在打不开，vkx add 会照实说，
+    /// 而不是让人去撞一个第三方库的 CMake 报错。
+    pub blocked: Option<&'static str>,
     pub about: &'static str,
 }
 
@@ -258,11 +265,18 @@ pub const SOURCE_LIBS: &[SourceLib] = &[
     SourceLib {
         key: "jolt",
         target: "Jolt",
+        cmake_subdir: "Build",
+        blocked: None,
         about: "物理引擎",
     },
     SourceLib {
         key: "gamenetworking",
         target: "GameNetworkingSockets::static",
+        cmake_subdir: "",
+        blocked: Some(
+            "它依赖 Protobuf，而 SDK 的 libs 组件里还没有——\
+             protoc 是要在打包机上跑的代码生成器，六个平台各自交叉编译还没做",
+        ),
         about: "局内实时传输",
     },
 ];
