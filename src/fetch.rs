@@ -16,13 +16,25 @@
 //!
 //! 取一个组件 = 一次 HTTP Range 请求 + 一次校验 + 一次解压。
 //!
-//! # 为什么用 curl 而不是内建 HTTP
+//! # 解压和校验都在进程内做
 //!
-//! 装 vkx 本来就要 curl（安装脚本用它下载 vkx 自己），而内建一套 TLS 会让这个
-//! 二进制大一个数量级。curl 自带 --range、断点续传和进度条。
+//! 不调用宿主机的 tar 和 sha256sum：Windows 上 `sha256sum` 根本不存在，而
+//! System32 里那个 bsdtar 是 3.3.2（2017 年的 libarchive），不支持 zstd。
+//! 依赖「机器上碰巧装了什么」的工具不叫自带电池。
+//!
+//! 所以解压用纯 Rust 的 tar + flate2 + ruzstd，校验用 sha2。压缩格式按魔数
+//! 自动认，包换成 zstd 也不用改代码。
+//!
+//! # HTTP 也在进程内
+//!
+//! 不调 curl。vkx 不依赖宿主机 PATH 上碰巧有什么——那样一来行为取决于读者的
+//! 机器装了什么，出问题很难远程判断。
+//!
+//! 证书优先用操作系统的验证（`platform-verifier` 走的是系统 API，不是外部
+//! 二进制），这样企业网里的 TLS 中间人也能正常工作；系统那条路走不通时回退
+//! 到内置的 webpki-roots。
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use crate::error::{Code, Context, Error, Result};
 use crate::ui;
@@ -133,76 +145,158 @@ fn parse_num(value: Option<&str>, component: &str, field: &str) -> Result<u64> {
     })
 }
 
-fn curl() -> Result<PathBuf> {
-    which("curl").ok_or_else(|| {
-        Error::new(
-            Code::Environment,
-            "找不到 curl",
-            "macOS 和 Windows 10 以上自带；Linux 上装一下：apt install curl / dnf install curl",
-        )
-    })
+/// 发一个 GET，可选地只要其中一段字节，边下边写文件并显示进度。
+///
+/// `range` 是 (起始偏移, 长度)。给了就发 `Range: bytes=a-b`，服务器不认时
+/// 会把整个文件发回来——调用方按收到的字节数就能发现。
+pub fn download_to(url: &str, to: &Path) -> Result<()> {
+    download(url, None, to, "新版本 vkx")
 }
 
-fn which(name: &str) -> Option<PathBuf> {
-    let paths = std::env::var_os("PATH")?;
-    std::env::split_paths(&paths)
-        .map(|dir| dir.join(name))
-        .find(|p| p.is_file())
-}
-
-/// 下载 URL 的一段字节。`length` 为 0 表示整个文件。
 fn download(url: &str, range: Option<(u64, u64)>, to: &Path, label: &str) -> Result<()> {
-    let curl = curl()?;
+    use std::io::Write;
+
     if let Some(parent) = to.parent() {
         crate::fs::create_dir_all(parent)?;
     }
-    let mut command = Command::new(&curl);
-    command.arg("-fL").arg("--progress-bar");
-    if let Some((offset, length)) = range {
-        command
-            .arg("--range")
-            .arg(format!("{}-{}", offset, offset + length - 1));
-    }
-    command.arg("-o").arg(to).arg(url);
 
     ui::step(&format!("取 {label}"));
-    let status = command
-        .status()
-        .context(Code::Environment, "运行 curl", "确认 curl 可执行")?;
-    if !status.success() {
-        return Err(Error::new(
-            Code::MissingComponent,
-            format!("下载失败：{url}"),
-            "确认网络可达；国内网络不通时可以换站点：VKX_MIRROR=<地址> vkx fetch",
-        )
-        .hint("站点必须支持 HTTP Range，否则取不了单个组件"));
+
+    let mut request = ureq::get(url);
+    if let Some((offset, length)) = range {
+        request = request.header("Range", format!("bytes={}-{}", offset, offset + length - 1));
     }
+    let response = request.call().map_err(|e| {
+        Error::new(
+            Code::MissingComponent,
+            format!("请求失败：{url}\n  {e}"),
+            "确认网络可达；国内网络不通时换站点：VKX_MIRROR=<地址> vkx fetch",
+        )
+    })?;
+
+    let total = response
+        .headers()
+        .get("content-length")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<u64>().ok());
+
+    let mut reader = response.into_body().into_reader();
+    let mut file = std::fs::File::create(to).context(
+        Code::Io,
+        format!("创建 {}", to.display()),
+        "确认 ~/.vkx 可写，且磁盘还有空间",
+    )?;
+
+    let mut buffer = vec![0u8; 1 << 16];
+    let mut done: u64 = 0;
+    let mut last_shown = 0u64;
+    loop {
+        use std::io::Read;
+        let read = reader.read(&mut buffer).context(
+            Code::MissingComponent,
+            "读取响应",
+            "网络中断了，重跑一次 vkx fetch",
+        )?;
+        if read == 0 {
+            break;
+        }
+        file.write_all(&buffer[..read]).context(
+            Code::Io,
+            format!("写入 {}", to.display()),
+            "确认磁盘还有空间：vkx clean --cache 可以腾出一些",
+        )?;
+        done += read as u64;
+        // 每 4 MB 报一次，别把终端刷爆
+        if done - last_shown >= 4 << 20 {
+            last_shown = done;
+            match total {
+                Some(total) if total > 0 => {
+                    ui::progress(done, total);
+                }
+                _ => ui::info(&format!("  已下载 {:.0} MB", done as f64 / 1_048_576.0)),
+            }
+        }
+    }
+    if let Some(total) = total {
+        ui::progress(done, total);
+    }
+    ui::progress_done();
     Ok(())
 }
 
 fn sha256_of(path: &Path) -> Result<String> {
-    let (program, args): (&str, Vec<&str>) = if which("sha256sum").is_some() {
-        ("sha256sum", vec![])
-    } else if which("shasum").is_some() {
-        ("shasum", vec!["-a", "256"])
+    use sha2::{Digest, Sha256};
+    let mut file = std::fs::File::open(path).context(
+        Code::Io,
+        format!("打开 {}", path.display()),
+        "确认 ~/.vkx/cache 可读",
+    )?;
+    let mut hasher = Sha256::new();
+    let mut buffer = vec![0u8; 1 << 20];
+    loop {
+        use std::io::Read;
+        let read = file.read(&mut buffer).context(
+            Code::Io,
+            format!("读取 {}", path.display()),
+            "确认磁盘没有故障；重跑 vkx fetch 会重新下载",
+        )?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect())
+}
+
+/// 按魔数认压缩格式，解一层压缩后交给 tar。
+///
+/// gzip 是 `1f 8b`，zstd 是 `28 b5 2f fd`，都认不出就当没压缩的裸 tar。
+/// 这样包换成别的压缩格式不用改代码，也不用管宿主机的 tar 支持什么。
+fn unpack(archive: &Path, into: &Path) -> Result<()> {
+    use std::io::Read;
+
+    let mut head = [0u8; 4];
+    {
+        let mut probe = std::fs::File::open(archive).context(
+            Code::Io,
+            format!("打开 {}", archive.display()),
+            "确认 ~/.vkx/cache 可读",
+        )?;
+        let _ = probe.read(&mut head);
+    }
+
+    let file = std::fs::File::open(archive).context(
+        Code::Io,
+        format!("打开 {}", archive.display()),
+        "确认 ~/.vkx/cache 可读",
+    )?;
+    let reader = std::io::BufReader::new(file);
+
+    let stream: Box<dyn Read> = if head[..2] == [0x1f, 0x8b] {
+        Box::new(flate2::read::GzDecoder::new(reader))
+    } else if head == [0x28, 0xb5, 0x2f, 0xfd] {
+        Box::new(
+            ruzstd::decoding::StreamingDecoder::new(reader).map_err(|e| {
+                Error::new(
+                    Code::MissingComponent,
+                    format!("zstd 流读不了：{e}"),
+                    "删掉缓存后重试：vkx clean --cache && vkx fetch",
+                )
+            })?,
+        )
     } else {
-        return Err(Error::new(
-            Code::Environment,
-            "找不到 sha256sum 或 shasum",
-            "macOS 自带 shasum；Linux 上装 coreutils",
-        ));
+        Box::new(reader)
     };
-    let output = Command::new(program)
-        .args(&args)
-        .arg(path)
-        .output()
-        .context(Code::Environment, format!("运行 {program}"), "确认它可执行")?;
-    let text = String::from_utf8_lossy(&output.stdout);
-    Ok(text
-        .split_whitespace()
-        .next()
-        .unwrap_or_default()
-        .to_string())
+
+    tar::Archive::new(stream).unpack(into).context(
+        Code::MissingComponent,
+        "解包",
+        "删掉缓存后重试：vkx clean --cache && vkx fetch",
+    )
 }
 
 /// 取清单。它很小（几百字节），每次都重新取，保证和镜像一致。
@@ -273,20 +367,9 @@ pub fn fetch_component(manifest: &Manifest, component: &Component) -> Result<()>
     let staging = sdk_dir().join(format!(".{}.tmp", component.name));
     crate::fs::remove_dir_all(&staging)?;
     crate::fs::create_dir_all(&staging)?;
-    let status = Command::new("tar")
-        .arg("xzf")
-        .arg(&cache)
-        .arg("-C")
-        .arg(&staging)
-        .status()
-        .context(Code::Environment, "运行 tar", "确认系统里有 tar")?;
-    if !status.success() {
+    if let Err(e) = unpack(&cache, &staging) {
         crate::fs::remove_dir_all(&staging)?;
-        return Err(Error::new(
-            Code::MissingComponent,
-            format!("{} 解压失败", component.name),
-            "删掉 ~/.vkx/cache 后重试：vkx clean --cache && vkx fetch",
-        ));
+        return Err(e);
     }
     std::fs::rename(&staging, &target).context(
         Code::Io,

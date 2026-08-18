@@ -6,7 +6,17 @@ description = "Vulkan + SDL3 跨平台游戏工程脚手架"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
+flate2 = { version = "1.1.9", default-features = false, features = ["rust_backend"] }
 include_dir = "0.7"
+ruzstd = "0.9.0"
+sha2 = "0.11.0"
+tar = "0.4.46"
+# HTTP：系统证书优先（platform-verifier 走操作系统的验证 API，是系统调用不是外部
+# 二进制），拿不到时回退到内置的 webpki-roots。
+ureq = { version = "3.4.0", default-features = false, features = [
+    "rustls",
+    "platform-verifier",
+] }
 
 [profile.release]
 strip = true

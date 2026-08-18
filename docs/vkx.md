@@ -18,6 +18,21 @@ vkx fetch --all
 VKX_MIRROR=https://example.com/vkx vkx fetch    # 换站点
 ```
 
+### 不调任何外部二进制
+
+下载、解压、校验全在进程内：HTTP 用 ureq + rustls，解压用纯 Rust 的
+tar + flate2 + ruzstd，校验用 sha2。
+
+不用 curl / tar / sha256sum 的理由是它们靠不住：Windows 上 `sha256sum` 根本
+不存在，System32 里那个 bsdtar 是 3.3.2（2017 年的 libarchive），不支持 zstd。
+依赖「机器上碰巧装了什么」的工具，出问题很难远程判断。
+
+证书优先走操作系统的验证（`platform-verifier` 用的是系统 API，不是外部
+二进制），企业网里的 TLS 中间人也能正常工作；系统那条走不通时回退到内置的
+webpki-roots。
+
+压缩格式按魔数认：gzip 是 `1f 8b`，zstd 是 `28 b5 2f fd`。换格式不用改代码。
+
 ### 容器：多个 .tar.gz 首尾相接
 
 原本想用 zip，但 zip 的中央目录在文件末尾——取中间一段拿到的字节不是合法

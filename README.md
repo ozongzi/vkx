@@ -47,8 +47,9 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; iwr -useb https://yinli.tech/f
 | 显卡驱动里的 Vulkan ICD | Windows 的 `vulkan-1.dll`、Linux 的 ICD 都由驱动提供 | 提示更新驱动或装 `mesa-vulkan-drivers` |
 
 其余的（C++ 编译器、CMake、Vulkan 相关的库和工具）都是可重定位的二进制，
-一律装进 `~/.vkx`。Windows 上装的是 llvm-mingw，不需要 Visual Studio；
-机器上如果已经有 MSVC，vkx 会优先用它。
+一律装进 `~/.vkx`。Windows 上统一用 llvm-mingw，不需要 Visual Studio——
+就算机器上装了也不用它：SDK 包里的预编译库是 llvm-mingw 编的，
+两种 ABI 混在一起会在链接期炸，而 MSVC 的工具集也不允许我们分发。
 
 ## 建镜像
 

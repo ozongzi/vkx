@@ -3,9 +3,6 @@
 //! Unix 上直接 rename 覆盖就行：正在运行的进程持有旧 inode，不受影响。
 //! Windows 不允许覆盖正在运行的 exe，所以先把自己改名让出位置，下次启动再清掉。
 
-use std::path::PathBuf;
-use std::process::Command;
-
 use crate::error::{Code, Context, Error, Result};
 use crate::{fetch, ui};
 
@@ -21,36 +18,20 @@ pub fn sweep_old() {
 
 fn remote_version() -> Result<String> {
     let url = format!("{}/vkx/version.txt", fetch::mirror());
-    let tmp = std::env::temp_dir().join("vkx-version.txt");
-    let curl = which("curl").ok_or_else(|| {
-        Error::new(
-            Code::Environment,
-            "找不到 curl",
-            "macOS 和 Windows 10 以上自带；Linux 上装一下：apt install curl",
-        )
-    })?;
-    let status = Command::new(curl)
-        .arg("-fsSL")
-        .arg("-o")
-        .arg(&tmp)
-        .arg(&url)
-        .status()
-        .context(Code::Environment, "运行 curl", "确认 curl 可执行")?;
-    if !status.success() {
-        return Err(Error::new(
-            Code::MissingComponent,
-            format!("取不到版本信息：{url}"),
-            "确认网络可达，或换一个站点：VKX_MIRROR=<地址> vkx self update",
-        ));
-    }
-    Ok(crate::fs::read_to_string(&tmp)?.trim().to_string())
-}
-
-fn which(name: &str) -> Option<PathBuf> {
-    let paths = std::env::var_os("PATH")?;
-    std::env::split_paths(&paths)
-        .map(|dir| dir.join(name))
-        .find(|p| p.is_file())
+    let text = ureq::get(&url)
+        .call()
+        .and_then(|r| r.into_body().read_to_string())
+        .map_err(|e| {
+            Error::new(
+                Code::MissingComponent,
+                format!(
+                    "取不到版本信息：{url}
+  {e}"
+                ),
+                "确认网络可达，或换一个站点：VKX_MIRROR=<地址> vkx self update",
+            )
+        })?;
+    Ok(text.trim().to_string())
 }
 
 pub fn run(check_only: bool) -> Result<u8> {
@@ -70,23 +51,7 @@ pub fn run(check_only: bool) -> Result<u8> {
     let platform = fetch::platform();
     let url = format!("{}/vkx/{latest}/vkx-{latest}-{platform}", fetch::mirror());
     let staged = std::env::temp_dir().join(format!("vkx-{latest}"));
-    let curl = which("curl")
-        .ok_or_else(|| Error::new(Code::Environment, "找不到 curl", "装一个 curl 再试"))?;
-    let status = Command::new(curl)
-        .arg("-fL")
-        .arg("--progress-bar")
-        .arg("-o")
-        .arg(&staged)
-        .arg(&url)
-        .status()
-        .context(Code::Environment, "运行 curl", "确认 curl 可执行")?;
-    if !status.success() {
-        return Err(Error::new(
-            Code::MissingComponent,
-            format!("下载失败：{url}"),
-            "确认网络可达；也可能这个平台还没发对应的包",
-        ));
-    }
+    fetch::download_to(&url, &staged)?;
 
     #[cfg(unix)]
     {

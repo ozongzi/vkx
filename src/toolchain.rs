@@ -62,20 +62,69 @@ pub fn which(program: &str) -> Option<PathBuf> {
     None
 }
 
-/// 先看 vkx 装的那份，再退回系统 PATH 上的。
-fn managed_or_system(relative: &str, program: &str) -> Option<PathBuf> {
+/// 工具从哪儿来，分三类。
+///
+/// # 只用我们自己的（[`managed_only`]）
+///
+/// slangc、clang-format 这类**输出必须逐字节一致**的工具。教程里每一步的 diff
+/// 和「校验层零输出」都建立在所有人拿到同样的产物上；读者机器上那个版本不同的
+/// clang-format 会把 `vkx fmt` 的结果改掉，diff 就对不上了。
+///
+/// # 系统的够用就用系统的（[`system_or_managed`]）
+///
+/// cmake、ninja 这类只要版本够新、行为就一致的工具。用系统已有的能省一次下载。
+/// 版本太旧则回退到我们装的那份。
+///
+/// # 只能用系统的
+///
+/// xcodebuild、xcrun、codesign、hdiutil——Apple 的东西不允许第三方再分发，
+/// 只能指望机器上装了 Xcode。这是文档里写明的两个例外之一。
+///
+/// # 永远不用的
+///
+/// MSVC。就算机器上装了 Visual Studio 也不碰它：我们发的预编译库是 llvm-mingw
+/// 编的，两种 ABI 混在一起会在链接期炸。
+fn managed_only(relative: &str) -> Option<PathBuf> {
     let managed = vkx_home().join(relative);
-    if managed.is_file() {
-        return Some(managed);
-    }
-    which(program)
+    managed.is_file().then_some(managed)
 }
 
-/// clang-format。先用 vkx 装的那份，保证所有人格式化结果一致；
-/// 没装（比如用了 --no-vkx）就退回系统 PATH 上的。
+/// 系统上那份够新就用它，否则用我们装的。`minimum` 是「主版本.次版本」。
+fn system_or_managed(relative: &str, program: &str, minimum: (u32, u32)) -> Option<PathBuf> {
+    if let Some(found) = which(program)
+        && version_at_least(&found, minimum)
+    {
+        return Some(found);
+    }
+    let managed = vkx_home().join(relative);
+    managed.is_file().then_some(managed)
+}
+
+/// 跑 `<程序> --version`，把第一个 `x.y` 抠出来比一下。认不出版本就当不满足。
+fn version_at_least(program: &Path, minimum: (u32, u32)) -> bool {
+    let Ok(output) = std::process::Command::new(program)
+        .arg("--version")
+        .output()
+    else {
+        return false;
+    };
+    let text = String::from_utf8_lossy(&output.stdout);
+    let Some(found) = text.split_whitespace().find_map(|word| {
+        let mut parts = word.split('.');
+        let major: u32 = parts.next()?.parse().ok()?;
+        let minor: u32 = parts.next().unwrap_or("0").parse().ok()?;
+        Some((major, minor))
+    }) else {
+        return false;
+    };
+    found >= minimum
+}
+
+/// clang-format。只用 vkx 装的那份——版本不同格式化结果就不同，
+/// 而教程的每一步 diff 都假设所有人格式化出来一模一样。
 pub fn clang_format() -> Result<PathBuf> {
     let relative = format!("tools/clang-format/{}", exe("clang-format"));
-    managed_or_system(&relative, "clang-format").ok_or_else(|| missing("clang-format", &relative))
+    managed_only(&relative).ok_or_else(|| missing("clang-format", &relative))
 }
 
 fn missing(tool: &str, expected: &str) -> Error {
@@ -136,7 +185,11 @@ fn render(command: &Command) -> String {
 // ---------------------------------------------------------------------------
 
 pub fn find_cmake() -> Option<PathBuf> {
-    managed_or_system(&format!("tools/cmake/bin/{}", exe("cmake")), "cmake")
+    system_or_managed(
+        &format!("tools/cmake/bin/{}", exe("cmake")),
+        "cmake",
+        (3, 24),
+    )
 }
 
 pub fn require_cmake() -> Result<PathBuf> {
@@ -144,7 +197,7 @@ pub fn require_cmake() -> Result<PathBuf> {
 }
 
 pub fn find_ninja() -> Option<PathBuf> {
-    managed_or_system(&format!("tools/ninja/{}", exe("ninja")), "ninja")
+    system_or_managed(&format!("tools/ninja/{}", exe("ninja")), "ninja", (1, 10))
 }
 
 pub fn require_ninja() -> Result<PathBuf> {
@@ -170,32 +223,6 @@ pub fn find_slangc() -> Option<PathBuf> {
 
 pub fn require_slangc() -> Result<PathBuf> {
     find_slangc().ok_or_else(|| missing("slangc（Slang 着色器编译器）", "tools/slang"))
-}
-
-/// Windows 上是否装了 MSVC；装了就优先用它，没有则用 llvm-mingw。
-pub fn windows_msvc() -> Option<String> {
-    if !cfg!(windows) {
-        return None;
-    }
-    let program_files = std::env::var_os("ProgramFiles(x86)")?;
-    let vswhere =
-        PathBuf::from(program_files).join("Microsoft Visual Studio/Installer/vswhere.exe");
-    if !vswhere.is_file() {
-        return None;
-    }
-    let output = capture(
-        &vswhere,
-        &[
-            "-latest",
-            "-products",
-            "*",
-            "-requires",
-            "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
-            "-property",
-            "installationVersion",
-        ],
-    )?;
-    (!output.is_empty()).then_some(output)
 }
 
 /// llvm-mingw 里的 clang，Windows 上没有 MSVC 时用它。

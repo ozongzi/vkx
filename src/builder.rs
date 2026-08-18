@@ -46,13 +46,12 @@ pub fn add_offline_sources(command: &mut Command) {
 
 /// 挑生成器和编译器。
 ///
-/// Windows 上装了 Visual Studio 就用 MSVC（默认生成器），没有就用安装脚本
-/// 带来的 llvm-mingw；其余平台一律 Ninja。
+/// 一律 Ninja + llvm-mingw（Windows）。
+///
+/// 就算机器上装了 Visual Studio 也不用 MSVC：SDK 包里的预编译库是 llvm-mingw
+/// 编的，两种 ABI 混在一起会在链接期炸。MSVC 的工具集也不允许我们分发，
+/// 用它就等于让每个读者的产物取决于自己装了哪个版本的 VS。
 fn add_generator(command: &mut Command) -> Result<()> {
-    if cfg!(windows) && toolchain::windows_msvc().is_some() {
-        return Ok(());
-    }
-
     let ninja = toolchain::require_ninja()?;
     command
         .arg("-G")
@@ -63,7 +62,7 @@ fn add_generator(command: &mut Command) -> Result<()> {
         let mingw = toolchain::llvm_mingw().ok_or_else(|| {
             Error::new(
                 Code::CommandFailed,
-                "Windows 上既没有 Visual Studio，也没有 llvm-mingw",
+                "Windows 上没有 llvm-mingw",
                 "重新运行安装脚本，它会装一份 llvm-mingw",
             )
         })?;
