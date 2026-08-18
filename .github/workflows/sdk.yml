@@ -1,0 +1,136 @@
+name: sdk
+
+# 造各平台的 SDK 包，发到一个 Release，由镜像同步过去。
+#
+# 一个平台一个包，里面按组件分段（toolchain / libs / vulkan / sources /
+# android），每段各压一个 .tar.zst 再首尾相接。vkx 用一次 HTTP Range 就能只取
+# 需要的那一段——不做安卓的人不必下那几 GB。
+#
+# 为什么 C 库要我们自己编而不是用上游的二进制：
+#   · 上游不是每个平台都有（Linux、iOS 基本都得自己编）
+#   · 同一个包里的库必须是同一套编译器、同一组开关编出来的，ABI 才对得齐
+#   · 可选依赖要一律关掉，否则会摸到构建机上的 libpng 之类，编出来的库依赖
+#     一个不在包里的东西，读者链接时才报 Undefined symbols
+#
+# Jolt 和 GameNetworkingSockets 只放源码：它们的公开接口是 C++ 类，预编译的 .a
+# 要和读者的标准库实现、异常/RTTI 开关全部对齐，对不上就崩在 std::string 的
+# 析构里。
+on:
+  workflow_dispatch:
+    inputs:
+      only_platforms:
+        description: "只跑这些平台，逗号分隔；留空表示全部"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 平台无关的部分先做一次，各平台共用
+  # ---------------------------------------------------------------------------
+  sources:
+    name: sources（平台无关）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 取 Jolt 和 GameNetworkingSockets 源码
+        run: sh mirror/build-sources.sh staging/sources
+      - uses: actions/upload-artifact@v4
+        with:
+          name: component-sources
+          path: staging/sources
+          retention-days: 1
+
+  # ---------------------------------------------------------------------------
+  # 每个平台编自己的 C 库，拼包
+  # ---------------------------------------------------------------------------
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - id: plan
+        env:
+          ONLY: ${{ inputs.only_platforms }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, sys
+          ALL = [
+              {"os": "macos-14",       "platform": "macos-arm64"},
+              {"os": "macos-13",       "platform": "macos-x64"},
+              {"os": "ubuntu-latest",  "platform": "linux-x64"},
+              {"os": "ubuntu-24.04-arm", "platform": "linux-arm64"},
+              {"os": "windows-latest", "platform": "windows-x64"},
+              {"os": "windows-11-arm", "platform": "windows-arm64"},
+          ]
+          only = [s.strip() for s in os.environ.get("ONLY", "").split(",") if s.strip()]
+          picked = ALL if not only else [e for e in ALL if e["platform"] in only]
+          print(f"matrix={json.dumps({'include': picked})}")
+          print("要跑的平台:", [e["platform"] for e in picked], file=sys.stderr)
+          PY
+
+  pack:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    needs: [plan, sources]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 编 C 库要 cmake + ninja + zstd。Windows 上统一用 llvm-mingw，
+      # 不用 MSVC——SDK 里的库和读者的代码必须是同一种 ABI。
+      - name: 准备构建工具
+        shell: bash
+        run: |
+          case "${{ runner.os }}" in
+            macOS)   brew install ninja zstd >/dev/null ;;
+            Linux)   sudo apt-get update -qq && sudo apt-get install -y ninja-build zstd >/dev/null ;;
+            Windows) choco install ninja zstandard -y >/dev/null ;;
+          esac
+
+      - name: 编 libs（SDL3 / mbedTLS / zlib / FreeType + 头文件库）
+        shell: bash
+        run: sh mirror/build-libs.sh "${{ matrix.platform }}" staging/libs
+
+      # toolchain 和 vulkan 是上游的二进制重打包，沿用已有的 sync.sh 逻辑。
+      - name: 收 toolchain 和 vulkan
+        shell: bash
+        run: sh mirror/collect-prebuilt.sh "${{ matrix.platform }}" staging
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: component-sources
+          path: staging/sources
+
+      - name: 拼包
+        shell: bash
+        run: sh mirror/pack.sh staging "${{ matrix.platform }}" out
+
+      # 拼完立刻自检：用刚编好的 vkx 从本地的包里取一段，逐字节比对。
+      # 包发出去之前先证明它是能用的。
+      - name: 自检
+        shell: bash
+        run: sh mirror/verify-pack.sh out "${{ matrix.platform }}" staging
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-${{ matrix.platform }}
+          path: out/
+
+  release:
+    needs: pack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: sdk-*
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: sdk-${{ github.run_number }}
+          files: dist/**/*

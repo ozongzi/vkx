@@ -15,9 +15,9 @@ vkx run
 
 | 谁 | 干什么 |
 | --- | --- |
-| **安装脚本** | 从镜像把整套开发环境装到 `~/.vkx`：vkx、CMake、Ninja、slangc、JDK、Gradle、Android SDK/NDK、MoltenVK、llvm-mingw、以及 SDL3 等依赖的源码 |
-| **vkx** | 只使用环境，自己不下载任何东西。缺件时报错指向重跑安装脚本 |
-| **镜像** | 你自己的服务器。`mirror/sync.sh` 把上游同步成一棵可直接对外提供的目录树 |
+| **安装脚本** | 只把 vkx 二进制放进 `~/.vkx/bin` 并接进 PATH，二三十行 |
+| **vkx** | 按需下载工具链，用 HTTP Range 只取 SDK 包里需要的那一段。下载、解压、校验全在进程内，不依赖机器上有 curl / tar / sha256sum |
+| **镜像** | 你自己的服务器。`mirror/` 下的脚本编出各平台的 SDK 包，只要静态文件服务支持 Range 就能对外提供 |
 
 这样读者的机器上只会多出一个 `~/.vkx` 目录，删掉就等于卸载干净；
 构建过程也完全不碰 GitHub，国内网络下不会卡在下载上。
@@ -36,8 +36,10 @@ Windows：
 Set-ExecutionPolicy Bypass -Scope Process -Force; iwr -useb https://yinli.tech/file/install.ps1 | iex
 ```
 
-加 `--no-android`（PowerShell 是 `-NoAndroid`）可以跳过 Android 部分，省约 5 GB。
-脚本最后会自检一遍（每个装好的工具都实际跑一次），有问题当场报出来。
+脚本只装 vkx 自己（几 MB）。工具链由 vkx 按需下载：第一次 `vkx build` 取桌面
+需要的那几个组件，第一次 `vkx build --target android` 才取 Android 那几 GB。
+
+想一次备齐用 `vkx fetch --all`；`vkx doctor` 会逐项报告缺什么、怎么补。
 
 ### 只有两样东西装不进 ~/.vkx
 
