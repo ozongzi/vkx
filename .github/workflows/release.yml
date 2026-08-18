@@ -12,9 +12,70 @@ permissions:
   contents: write
 
 jobs:
+  # 从 sdk.yml 搬过来的。打包 CI 已经删掉，但 mirror/*.sh 现在是镜像那边
+  # 唯一的机制，反而更要守住——下面三条都是真栽过的跟头，塞回去必须失败。
+  lint:
+    name: 脚本体检
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 按各自声明的解释器做语法检查
+        run: |
+          set -eu
+          for f in mirror/*.sh install/*.sh; do
+            case "$(head -1 "$f")" in
+              *bash*) bash -n "$f" ;;
+              *)      dash -n "$f" ;;   # Ubuntu 的 /bin/sh 是 dash，比 bash 严
+            esac
+            echo "✓ $f"
+          done
+
+      - name: POSIX 脚本别混进 bash 语法
+        run: |
+          set -eu
+          bad=0
+          for f in mirror/*.sh install/*.sh; do
+            head -1 "$f" | grep -q bash && continue
+            if shellcheck -s sh -f gcc "$f" 2>/dev/null | grep 'SC3' ; then
+              bad=1
+            fi
+          done
+          [ "$bad" -eq 0 ] || { echo "↑ 这些写法在 Ubuntu 的 dash 上会炸"; exit 1; }
+          echo "✓ 没有 bash 语法混入"
+
+      - name: 别用 sh 去调 bash 脚本
+        run: |
+          set -eu
+          bad=0
+          for f in mirror/*.sh install/*.sh; do
+            head -1 "$f" | grep -q bash || continue
+            name=$(basename "$f")
+            if grep -rnE "(^|[[:space:];&|(])sh +[^ ]*$name" \
+                 --include='*.sh' --include='*.yml' . | grep -v ':[[:space:]]*#' ; then
+              echo "↑ $name 声明的是 bash，却被 sh 调用"
+              bad=1
+            fi
+          done
+          [ "$bad" -eq 0 ] || exit 1
+          echo "✓ 没有解释器错配"
+
+      - name: 变量名后面别紧跟中文
+        run: |
+          set -eu
+          # "$name（...）" 里的全角括号会被 shell 当成变量名的一部分，
+          # set -u 下直接崩。要写成 ${name}。
+          if LC_ALL=C grep -rnE '\$[A-Za-z_][A-Za-z0-9_]*[^[:print:][:space:]]' \
+               --include='*.sh' --include='*.yml' . \
+               | grep -v '\${' | grep -v ':[[:space:]]*#' ; then
+            echo "↑ 变量名后面紧跟了非 ASCII 字符，加大括号"
+            exit 1
+          fi
+          echo "✓ 没有这个陷阱"
+
   build:
     name: ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
+    needs: lint
     strategy:
       fail-fast: false
       matrix:

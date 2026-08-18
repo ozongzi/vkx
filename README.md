@@ -157,12 +157,12 @@ $ vkx new
 `sdk/vulkan/vulkan` 里是 Vulkan loader 和 khronos 校验层。校验层不在显卡驱动里，
 Debug 构建要靠它报出用错 Vulkan 的地方，所以得自己分发。上游只有 LunarG 的整包
 （每平台 274~493 MB，macOS / Windows 版还是安装脚本跑不动的 Qt 安装器），
-于是由 `.github/workflows/vulkan-sdk.yml` 挑出需要的几个文件重打包成几十 MB，
-发到一个单独的 Release，再由 `sync.sh` 的 `vulkan-sdk` 组件镜像过来。
-LunarG 不提供 Linux ARM64，那个平台在同一个 workflow 里从源码构建。
+于是由当时的 `vulkan-sdk.yml` 挑出需要的几个文件重打包成几十 MB，发到一个
+单独的 Release，再由 `sync.sh` 的 `vulkan-sdk` 组件镜像过来。LunarG 不提供
+Linux ARM64，那个平台在同一个 workflow 里从源码构建。
 
-Vulkan 版本升级时手动触发那个 workflow，改 `mirror/versions.sh` 里的
-`VULKAN_SDK` 再重跑同步。
+那个 workflow 和拼包用的 `sdk.yml` 现在都删了——包已经在镜像上，依赖也不会
+再 rebase。要重建见 DEPLOY.md 顶部记的恢复方法。
 
 ### 运行期的环境变量
 

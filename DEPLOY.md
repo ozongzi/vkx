@@ -1,5 +1,22 @@
 # 部署到镜像
 
+> **打包 CI 已经删掉。** `sdk.yml`（六平台拼包）和 `vulkan-sdk.yml`（重打
+> LunarG 的包）都是一次性的手段——包已经产出、已经在镜像上了，依赖也不会再
+> rebase，留着只是每跑一轮多发一个用不上的 release。
+>
+> 现在 CI 只剩 `release.yml`，做一件事：交叉编译 vkx 自己，外加一道脚本体检。
+>
+> 真要重建包的话，两个 workflow 在 git 历史里：
+>
+> ```sh
+> git show 93d2b13:.github/workflows/sdk.yml        > sdk.yml
+> git show 82f6847:.github/workflows/vulkan-sdk.yml > vulkan-sdk.yml
+> ```
+>
+> 挑文件、编库、拼包、自检的逻辑本来就不在 workflow 里，而在 `mirror/*.sh`，
+> 那些都还在。workflow 里只有 runner 矩阵和交叉编译的开关。
+
+
 镜像是 `https://yinli.tech/file`（vkx 里的 `DEFAULT_MIRROR`）。
 
 **在服务器上做，不要在本机做。** 服务器到 GitHub 实测 26 MB/s，本机上行约
