@@ -9,7 +9,8 @@
 set -eu
 
 PLATFORM=${1:?用法: collect-prebuilt.sh <平台> <staging 目录>}
-STAGING=$(cd "$(dirname "${2:?}")" && pwd)/$(basename "$2")
+mkdir -p "${2:?}"
+STAGING=$(cd "${2:?}" && pwd)
 HERE=$(cd "$(dirname "$0")" && pwd)
 . "$HERE/versions.sh"
 

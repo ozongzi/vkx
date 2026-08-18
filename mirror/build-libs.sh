@@ -15,7 +15,8 @@
 set -eu
 
 PLATFORM=${1:?用法: build-libs.sh <平台> <输出目录>}
-OUT=$(cd "$(dirname "${2:?}")" && pwd)/$(basename "$2")
+mkdir -p "${2:?}"
+OUT=$(cd "${2:?}" && pwd)
 HERE=$(cd "$(dirname "$0")" && pwd)
 . "$HERE/versions.sh"
 

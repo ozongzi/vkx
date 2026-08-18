@@ -10,7 +10,8 @@
 # 平台无关，所有平台的包共用同一份。
 set -eu
 
-OUT=$(cd "$(dirname "${1:?用法: build-sources.sh <输出目录>}")" && pwd)/$(basename "$1")
+mkdir -p "${1:?用法: build-sources.sh <输出目录>}"
+OUT=$(cd "${1:?用法: build-sources.sh <输出目录>}" && pwd)
 HERE=$(cd "$(dirname "$0")" && pwd)
 . "$HERE/versions.sh"
 
