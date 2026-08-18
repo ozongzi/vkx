@@ -137,37 +137,47 @@ $ vkx new
 
 ## 环境布局
 
+安装脚本只装 vkx 本身。其余全部来自 `vkx fetch` 取下来的 SDK 包——第一次
+`vkx build` 会自动去取。
+
 ```
 ~/.vkx/
   bin/vkx
-  env.sh                       PATH / JAVA_HOME / ANDROID_HOME，安装脚本接进你的 shell
-  installed.txt                已装组件和版本，用于增量升级
-  tools/{cmake,ninja,slang,clang-format,jdk,gradle,moltenvk,vulkan,llvm-mingw}
-  android/sdk/{cmdline-tools,platform-tools,build-tools,platforms,ndk}
-  src/{sdl3,sdl3-android,vulkan-headers,volk}    构建时离线取用
+  cache/                         下载缓存
+  sdk/toolchain/{cmake,ninja,slang,clang-format,llvm-mingw}
+  sdk/vulkan/{vulkan,moltenvk}
+  sdk/libs/{include,lib}         预编译的 C 库、头文件库、Vulkan-Headers、volk
+  sdk/sources/{jolt,gamenetworking}
+  sdk/android/{jdk,gradle,sdk}   移动端打包用（暂未进包）
 ```
 
-`tools/vulkan` 里是 Vulkan loader 和 khronos 校验层。校验层不在显卡驱动里，
+`sdk/` 下一个目录对应清单里的一个组件，fetch 就是按这个对应关系解包的。
+`VKX_HOME` 可以整体换个位置。
+
+`sdk/vulkan/vulkan` 里是 Vulkan loader 和 khronos 校验层。校验层不在显卡驱动里，
 Debug 构建要靠它报出用错 Vulkan 的地方，所以得自己分发。上游只有 LunarG 的整包
 （每平台 274~493 MB，macOS / Windows 版还是安装脚本跑不动的 Qt 安装器），
 于是由 `.github/workflows/vulkan-sdk.yml` 挑出需要的几个文件重打包成几十 MB，
 发到一个单独的 Release，再由 `sync.sh` 的 `vulkan-sdk` 组件镜像过来。
 LunarG 不提供 Linux ARM64，那个平台在同一个 workflow 里从源码构建。
 
-Vulkan 版本升级时手动触发那个 workflow，改 `sync.sh` 顶部的 `VULKAN_SDK` 再重跑同步。
+Vulkan 版本升级时手动触发那个 workflow，改 `mirror/versions.sh` 里的
+`VULKAN_SDK` 再重跑同步。
 
-macOS 上还额外设了 `SDL_VULKAN_LIBRARY`（loader 的绝对路径）和 `VK_DRIVER_FILES`：
-那是唯一连 loader 都没有的平台，不明确指定的话 SDL 会退而直接加载 MoltenVK，
-绕过 loader，校验层就无从插入。这几个变量都不用 `DYLD_*`——macOS 的 SIP 会在执行
-系统二进制时把 `DYLD_*` 剥掉，只要中间隔一层 `/bin/sh` 就失效。
+### 运行期的环境变量
 
-`src/` 里的源码通过 CMake 的 `FETCHCONTENT_SOURCE_DIR_*` 直接喂给工程，
-所以构建全程不联网，产物也不会依赖机器上装的系统 SDL3。
+`vkx run` 启动程序前会补几个变量，指向 SDK 里的 Vulkan（见
+`toolchain::vulkan_runtime_env`）。macOS 上设 `SDL_VULKAN_LIBRARY`（loader 的
+绝对路径）和 `VK_DRIVER_FILES`：那是唯一连 loader 都没有的平台，不明确指定的话
+SDL 会退而直接加载 MoltenVK，绕过 loader，校验层就无从插入——症状是程序照常
+运行，只多一行「校验层不可用」。
 
-vkx 自己不注入任何环境变量，运行时原样继承你 shell 里的环境——所以上面那几个
-变量都由 `env.sh` 提供，安装脚本会把它接进你的 shell。
+**不能用 `DYLD_LIBRARY_PATH`。** macOS 的 SIP 会在执行受保护的系统二进制时把
+`DYLD_*` 剥掉，中间隔一层 `/usr/bin/env` 或 `/bin/sh` 就没了。
 
-## 分发
+Linux 和 Windows 的 loader 由显卡驱动提供，只补校验层的目录。
+
+## 分发## 分发
 
 `vkx dist` 出的是能直接发给别人的东西，全部落在工程的 `dist/` 下：
 

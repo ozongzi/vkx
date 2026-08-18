@@ -208,6 +208,7 @@ pub fn run(project: &Project, profile: Profile, args: &[String]) -> Result<i32> 
             Some(existing)
                 if !existing.is_empty()
                     && key != "VK_ICD_FILENAMES"
+                    && key != "VK_DRIVER_FILES"
                     && key != "SDL_VULKAN_LIBRARY" =>
             {
                 let separator = if cfg!(windows) { ";" } else { ":" };

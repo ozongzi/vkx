@@ -440,8 +440,11 @@ pub fn vulkan_runtime_env() -> Vec<(&'static str, PathBuf)> {
             env.push(("SDL_VULKAN_LIBRARY", loader));
         }
         // ICD 也要指：Windows 和 Linux 的显卡驱动会自己注册，macOS 没人注册。
+        // 两个名字都给：VK_DRIVER_FILES 是现在的名字，VK_ICD_FILENAMES 是
+        // 旧名，读者机器上的 loader 版本不确定，给两个不冲突。
         let icd = vulkan.join("share/vulkan/icd.d/MoltenVK_icd.json");
         if icd.is_file() {
+            env.push(("VK_DRIVER_FILES", icd.clone()));
             env.push(("VK_ICD_FILENAMES", icd));
         }
     } else if lib.is_dir() {
