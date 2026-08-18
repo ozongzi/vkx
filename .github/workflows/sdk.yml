@@ -57,13 +57,16 @@ jobs:
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json, os, sys
+          # runner 标签和 release.yml 保持一致——那套是跑通过的。
+          # macos-x64 在 arm64 的机器上交叉编译（-DCMAKE_OSX_ARCHITECTURES），
+          # 比依赖已经进入退役期的 macos-13 稳。
           ALL = [
-              {"os": "macos-14",       "platform": "macos-arm64"},
-              {"os": "macos-13",       "platform": "macos-x64"},
-              {"os": "ubuntu-latest",  "platform": "linux-x64"},
-              {"os": "ubuntu-24.04-arm", "platform": "linux-arm64"},
-              {"os": "windows-latest", "platform": "windows-x64"},
-              {"os": "windows-11-arm", "platform": "windows-arm64"},
+              {"os": "macos-14",         "platform": "macos-arm64",   "cmake": "-DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0"},
+              {"os": "macos-14",         "platform": "macos-x64",     "cmake": "-DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0"},
+              {"os": "ubuntu-latest",    "platform": "linux-x64",     "cmake": ""},
+              {"os": "ubuntu-24.04-arm", "platform": "linux-arm64",   "cmake": ""},
+              {"os": "windows-latest",   "platform": "windows-x64",   "cmake": ""},
+              {"os": "windows-11-arm",   "platform": "windows-arm64", "cmake": ""},
           ]
           only = [s.strip() for s in os.environ.get("ONLY", "").split(",") if s.strip()]
           picked = ALL if not only else [e for e in ALL if e["platform"] in only]
@@ -87,15 +90,54 @@ jobs:
       - name: 准备构建工具
         shell: bash
         run: |
+          set -eu
           case "${{ runner.os }}" in
-            macOS)   brew install ninja zstd >/dev/null ;;
-            Linux)   sudo apt-get update -qq && sudo apt-get install -y ninja-build zstd >/dev/null ;;
-            Windows) choco install ninja zstandard -y >/dev/null ;;
+            macOS)
+              brew install ninja zstd >/dev/null
+              ;;
+            Linux)
+              sudo apt-get update -qq
+              sudo apt-get install -y ninja-build zstd libx11-dev libxext-dev \
+                  libxrandr-dev libxi-dev libxcursor-dev libxfixes-dev >/dev/null
+              ;;
+            Windows)
+              choco install ninja zstandard --no-progress -y >/dev/null
+              ;;
           esac
+          cmake --version | head -1
+          ninja --version
+          zstd --version
+
+      # Windows 统一用 llvm-mingw，不用 MSVC：SDK 里的库和读者的代码必须是
+      # 同一种 ABI，而 MSVC 的工具集也不允许我们分发。
+      - name: 取 llvm-mingw（仅 Windows）
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -eu
+          . mirror/versions.sh
+          case "${{ matrix.platform }}" in
+            windows-x64)   host=x86_64 ;;
+            windows-arm64) host=aarch64 ;;
+          esac
+          url="https://github.com/mstorsjo/llvm-mingw/releases/download/$LLVM_MINGW/llvm-mingw-$LLVM_MINGW-ucrt-$host.zip"
+          echo "取 $url"
+          curl -fsSL "$url" -o mingw.zip
+          unzip -q mingw.zip
+          dir=$(find . -maxdepth 1 -name 'llvm-mingw-*' -type d | head -1)
+          echo "$(cd "$dir/bin" && pwd)" >> "$GITHUB_PATH"
 
       - name: 编 libs（SDL3 / mbedTLS / zlib / FreeType + 头文件库）
         shell: bash
-        run: sh mirror/build-libs.sh "${{ matrix.platform }}" staging/libs
+        env:
+          CMAKE_EXTRA: ${{ matrix.cmake }}
+        run: |
+          set -eu
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            # llvm-mingw 的 clang 已经在 PATH 上了
+            export CMAKE_EXTRA="$CMAKE_EXTRA -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++"
+          fi
+          sh mirror/build-libs.sh "${{ matrix.platform }}" staging/libs
 
       # toolchain 和 vulkan 是上游的二进制重打包，沿用已有的 sync.sh 逻辑。
       - name: 收 toolchain 和 vulkan
@@ -113,6 +155,11 @@ jobs:
 
       # 拼完立刻自检：用刚编好的 vkx 从本地的包里取一段，逐字节比对。
       # 包发出去之前先证明它是能用的。
+      # 自检要用 vkx 真的从包里取一遍，所以先编一个出来。
+      - name: 编 vkx（自检用）
+        shell: bash
+        run: cargo build --release
+
       - name: 自检
         shell: bash
         run: sh mirror/verify-pack.sh out "${{ matrix.platform }}" staging

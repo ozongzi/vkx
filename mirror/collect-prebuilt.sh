@@ -19,6 +19,17 @@ mkdir -p "$STAGING/toolchain" "$STAGING/vulkan"
 
 GH=https://github.com
 
+# sync.sh 用的是 linux-x86_64 这套命名，vkx 要的是 linux-x64。
+# 包名必须跟 vkx 走（它按自己的 platform() 去镜像上找），所以这里翻译一次。
+case $PLATFORM in
+    macos-arm64)   SYNC_PLATFORM=macos-arm64 ;;
+    macos-x64)     SYNC_PLATFORM=macos-x86_64 ;;
+    linux-x64)     SYNC_PLATFORM=linux-x86_64 ;;
+    linux-arm64)   SYNC_PLATFORM=linux-aarch64 ;;
+    windows-x64)   SYNC_PLATFORM=windows-x86_64 ;;
+    windows-arm64) SYNC_PLATFORM=windows-aarch64 ;;
+esac
+
 # 上游的文件名各家不一样，按平台翻译。
 case $PLATFORM in
     macos-*)   CMAKE_SUFFIX="macos-universal";     NINJA_SUFFIX="mac"      ;;
@@ -44,7 +55,7 @@ mkdir -p "$STAGING/toolchain/ninja"
 # slangc、clang-format、Vulkan loader / 校验层 / MoltenVK 的下载和挑文件规则
 # 已经在 sync.sh 里写好了，这里复用它，避免同一套逻辑维护两份。
 echo "== slang / clang-format / vulkan（复用 sync.sh 的规则）" >&2
-sh "$HERE/sync.sh" "$WORK/mirror" --platform "$PLATFORM" \
+sh "$HERE/sync.sh" "$WORK/mirror" --platform "$SYNC_PLATFORM" \
     --only slang,clang-format,vulkan-sdk,moltenvk >&2
 
 # sync.sh 产出的是「解开即是安装目录内容」的包，直接摊进对应组件。
