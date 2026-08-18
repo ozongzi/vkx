@@ -409,8 +409,6 @@ pub fn fetch_component(manifest: &Manifest, component: &Component) -> Result<()>
 }
 
 /// 桌面构建默认要哪些组件。Android 那几 GB 只有显式要才取。
-const DESKTOP: &[&str] = &["toolchain", "libs", "vulkan"];
-
 /// 确保这几个组件都在本地，缺的取回来。
 ///
 /// 和逐个调 run() 的区别是清单只读一次——否则每取一个组件就要往镜像上问一次
@@ -434,11 +432,14 @@ pub fn ensure(names: &[&str]) -> Result<()> {
     Ok(())
 }
 
-pub fn run(component: Option<&str>, all: bool) -> Result<u8> {
+/// `vkx fetch` 把 SDK 全部取回来；`--component` 只取一个。
+///
+/// 以前默认只取桌面那三个，Android 要另外加 --all。但「取 SDK」就该是取 SDK，
+/// 让人先猜自己需要哪几段不是它的职责。按需只取那几段的是 build 里的
+/// ensure_sdk——那是隐式的，不该顺手拖 1.1 GB 下来。
+pub fn run(component: Option<&str>) -> Result<u8> {
     let manifest = manifest()?;
-    let wanted: Vec<&Component> = if all {
-        manifest.components.iter().collect()
-    } else if let Some(name) = component {
+    let wanted: Vec<&Component> = if let Some(name) = component {
         let found = manifest
             .components
             .iter()
@@ -457,11 +458,7 @@ pub fn run(component: Option<&str>, all: bool) -> Result<u8> {
             })?;
         vec![found]
     } else {
-        manifest
-            .components
-            .iter()
-            .filter(|c| DESKTOP.contains(&c.name.as_str()))
-            .collect()
+        manifest.components.iter().collect()
     };
 
     for component in wanted {

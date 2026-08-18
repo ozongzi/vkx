@@ -88,14 +88,11 @@ enum Command {
     },
     /// 删除构建产物
     Clean,
-    /// 从镜像取工具链组件（只下需要的那几段）
+    /// 从镜像取 SDK 组件（用 HTTP Range，只下那一段的字节）
     Fetch {
-        /// 只取这一个组件；不给就取桌面构建需要的那几个
+        /// 只取这一个组件；不给就把 SDK 全部取回来
         #[arg(long)]
         component: Option<String>,
-        /// 全部取回来，包括 Android 那几 GB
-        #[arg(long)]
-        all: bool,
     },
     /// 检查环境，报告缺什么、怎么补
     Doctor,
@@ -221,7 +218,7 @@ fn dispatch(cli: Cli) -> Result<u8> {
             let project = current_project()?;
             fmt::run(&project, check)
         }
-        Command::Fetch { component, all } => fetch::run(component.as_deref(), all),
+        Command::Fetch { component } => fetch::run(component.as_deref()),
         Command::Doctor => doctor::run(),
         Command::Selfcmd(SelfCommand::Update { check }) => selfupdate::run(check),
         Command::Add { name } => {

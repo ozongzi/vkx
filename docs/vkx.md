@@ -14,7 +14,7 @@ MoltenVK、以及 Android 的 JDK / Gradle / SDK / NDK。
 ```sh
 vkx fetch                          # 取本平台默认需要的部分
 vkx fetch --component android      # 要出安卓包时才取那几 GB
-vkx fetch --all
+vkx fetch
 VKX_MIRROR=https://example.com/vkx vkx fetch    # 换站点
 ```
 

@@ -39,7 +39,7 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; iwr -useb https://yinli.tech/f
 脚本只装 vkx 自己（几 MB）。工具链由 vkx 按需下载：第一次 `vkx build` 取桌面
 需要的那几个组件，第一次 `vkx build --target android` 才取 Android 那几 GB。
 
-想一次备齐用 `vkx fetch --all`；`vkx doctor` 会逐项报告缺什么、怎么补。
+`vkx fetch` 把 SDK 全部取回来（含 Android 那 1.1 GB）；`vkx doctor` 会逐项报告缺什么、怎么补。
 
 ### 只有两样东西装不进 ~/.vkx
 

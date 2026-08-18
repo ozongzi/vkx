@@ -7,7 +7,7 @@
 #
 # 工具链不在这里装。vkx 自己按需下载——第一次 vkx build 取桌面要的那几个组件，
 # 第一次 vkx build --target android 才取 Android 那几 GB。想一次备齐就跑
-# `vkx fetch --all`。
+# `vkx fetch`。
 set -eu
 
 MIRROR=${VKX_MIRROR:-https://yinli.tech/file}
@@ -52,5 +52,5 @@ printf '    vkx new mygame\n'
 printf '    cd mygame\n'
 printf '    vkx run\n\n'
 printf '第一次 vkx run 会下载编译需要的工具链（几十 MB）。\n'
-printf '想一次备齐（含 Android 那几 GB）：vkx fetch --all\n'
+printf '想一次备齐（含 Android 那 1.1 GB）：vkx fetch\n'
 printf '看环境齐不齐：vkx doctor\n'

@@ -36,7 +36,7 @@ pub fn run() -> Result<u8> {
     if missing > 0 {
         ui::step("怎么补");
         ui::info("vkx fetch            取桌面构建需要的组件");
-        ui::info("vkx fetch --all      连 Android 那几 GB 一起取");
+        ui::info("vkx fetch            把 SDK 全部取回来，含 Android");
         return Ok(1);
     }
     ui::step("桌面构建需要的东西都齐了");

@@ -57,7 +57,7 @@ impl Code {
             Code::MissingComponent => {
                 "工具链的某个组件不在 ~/.vkx 里。\n\n\
                  vkx 按需下载，所以第一次用到某个平台时会去取。\n\
-                 网络不通时可以先 `vkx fetch --all` 在有网的地方备好，\n\
+                 网络不通时可以先 `vkx fetch` 在有网的地方备好，\n\
                  或者用 VKX_MIRROR 指向别的站点。"
             }
             Code::CommandFailed => {

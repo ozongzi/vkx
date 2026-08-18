@@ -50,7 +50,7 @@ const TOPICS: &[(&str, &str, &str)] = &[
         "每个平台一个 SDK 包，里面按组件分段：toolchain / libs / vulkan / android。\n\n\
          vkx fetch                取桌面构建需要的那几段\n\
          vkx fetch --component android   出安卓包时才取那几 GB\n\
-         vkx fetch --all\n\n\
+         vkx fetch\n\n\
          用 HTTP Range 只下需要的字节，所以不想做安卓的人不必等那几 GB。\n\
          站点必须支持 Range；不支持时 vkx 会当场说清而不是默默下整包。",
     ),
