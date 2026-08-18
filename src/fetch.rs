@@ -411,6 +411,29 @@ pub fn fetch_component(manifest: &Manifest, component: &Component) -> Result<()>
 /// 桌面构建默认要哪些组件。Android 那几 GB 只有显式要才取。
 const DESKTOP: &[&str] = &["toolchain", "libs", "vulkan"];
 
+/// 确保这几个组件都在本地，缺的取回来。
+///
+/// 和逐个调 run() 的区别是清单只读一次——否则每取一个组件就要往镜像上问一次
+/// 清单，屏幕上刷出三遍「取 xxx 的清单」，看着像卡住了。
+pub fn ensure(names: &[&str]) -> Result<()> {
+    let missing: Vec<&str> = names
+        .iter()
+        .copied()
+        .filter(|name| !installed(name))
+        .collect();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    let manifest = manifest()?;
+    for name in missing {
+        let Some(component) = manifest.components.iter().find(|c| c.name == name) else {
+            continue;
+        };
+        fetch_component(&manifest, component)?;
+    }
+    Ok(())
+}
+
 pub fn run(component: Option<&str>, all: bool) -> Result<u8> {
     let manifest = manifest()?;
     let wanted: Vec<&Component> = if all {

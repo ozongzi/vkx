@@ -109,7 +109,7 @@ pub fn add(project: &Project, name: &str) -> Result<u8> {
     // 打开一个库之后紧接着 build 才是常态，等到 CMake 那一步再说「找不到
     // 源码」，中间还隔着一次配置失败。
     if crate::toolchain::source_dir(key).is_none() {
-        crate::fetch::run(Some("sources"), false)?;
+        crate::fetch::ensure(&["sources"])?;
     }
 
     ui::info("下次 vkx build 会把它编进来，第一次会多花几分钟。");
