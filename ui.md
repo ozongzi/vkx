@@ -345,6 +345,6 @@ UI 线程不允许等待**。
 ## 参考
 
 - `~/blog/source/_posts/我的UI设计观.md` —— 验收标准原文
-- `讲稿/chapter1.typ` —— 前九步（三角形 → 圆角矩形管线 → 三层架构）
+- `../讲稿/chapter1.typ` —— 前九步（三角形 → 圆角矩形管线 → 三层架构）
 - `~/game/onedot44mb_game/` —— 笔画骨架字库的实现
 - `docs/vkx.md` —— 工具链与构建
