@@ -3,6 +3,7 @@ mod dist;
 mod error;
 mod fmt;
 mod fs;
+mod generate;
 mod help;
 mod mobile;
 mod project;
@@ -184,7 +185,7 @@ fn dispatch(cli: Cli) -> Result<u8> {
         Command::Help { topic } => help::run(topic.as_deref(), &mut Cli::command()),
         Command::Clean => {
             let project = current_project()?;
-            let build_dir = project.root.join("build");
+            let build_dir = project.root.join("target");
             if build_dir.exists() {
                 crate::fs::remove_dir_all(&build_dir)?;
                 ui::step(&format!("已删除 {}", pretty_path(&build_dir)));

@@ -112,6 +112,7 @@ pub fn build(project: &Project, profile: Profile) -> Result<PathBuf> {
     check_cxx_toolchain()?;
     let cmake = toolchain::require_cmake()?;
     let slangc = toolchain::require_slangc()?;
+    crate::generate::cmake(project)?;
     let build_dir = project.build_dir(profile.dir());
 
     ui::step(&format!(
@@ -122,7 +123,7 @@ pub fn build(project: &Project, profile: Profile) -> Result<PathBuf> {
     let mut configure = Command::new(&cmake);
     configure
         .arg("-S")
-        .arg(&project.root)
+        .arg(project.cmake_dir())
         .arg("-B")
         .arg(&build_dir)
         .arg(format!("-DCMAKE_BUILD_TYPE={}", profile.cmake_config()))

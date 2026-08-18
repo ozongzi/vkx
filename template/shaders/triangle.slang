@@ -45,5 +45,5 @@ float4 fragment_main(VertexOutput input) : SV_Target
     return float4(input.color, 1.0);
 }
 
-// 再加别的着色器：可以在这个文件里写新的入口函数，然后到 CMakeLists.txt 里
-// 补一条 vkx_add_slang_shader(...)；也可以新建一个 .slang 文件。
+// 再加别的着色器：在这个文件里写新的入口函数，或者新建一个 .slang 文件。
+// 带 [shader("...")] 标注的入口 vkx 会自动扫出来，不用改任何配置。

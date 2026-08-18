@@ -15,6 +15,8 @@ use crate::ui;
 /// 跑一个 Gradle 任务。前面那一大段是把环境准备齐：SDL 的 aar、签名密钥、
 /// local.properties，以及要传给 CMake 的各种路径。
 fn run_gradle_task(project: &Project, profile: Profile, task: &str) -> Result<PathBuf> {
+    // Gradle 会去调 CMake，所以生成物要先就位。
+    crate::generate::cmake(project)?;
     let android_dir = project.root.join("android");
     if !android_dir.is_dir() {
         return Err(Error::new(
@@ -250,11 +252,12 @@ pub fn configure_ios(project: &Project, device: bool) -> Result<PathBuf> {
     };
     let build_dir = ios_build_dir(project, device);
 
+    crate::generate::cmake(project)?;
     ui::step(&format!("生成 Xcode 工程 ({sysroot})"));
     let mut configure = Command::new(&cmake);
     configure
         .arg("-S")
-        .arg(&project.root)
+        .arg(project.cmake_dir())
         .arg("-B")
         .arg(&build_dir)
         .arg("-G")

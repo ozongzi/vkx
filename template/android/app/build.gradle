@@ -1,5 +1,5 @@
 // Android App 的构建配置。
-// 原生代码不在这里编：externalNativeBuild 会去调用工程根目录的 CMakeLists.txt。
+// 原生代码不在这里编：externalNativeBuild 会去调用 vkx 生成的 target/CMakeLists.txt。
 
 plugins {
     id "com.android.application"
@@ -62,7 +62,7 @@ android {
 
     externalNativeBuild {
         cmake {
-            path "../../CMakeLists.txt"   // 工程根目录那份，五平台共用
+            path "../../target/CMakeLists.txt"   // vkx 生成的那份，五平台共用
             version "3.24.0+"
         }
     }

@@ -68,8 +68,13 @@ impl Project {
         })
     }
 
+    /// 生成的 CMakeLists 所在目录，也是 cmake 的 source dir。
+    pub fn cmake_dir(&self) -> PathBuf {
+        self.root.join("target")
+    }
+
     pub fn build_dir(&self, profile: &str) -> PathBuf {
-        self.root.join("build").join(profile)
+        self.root.join("target").join(profile)
     }
 }
 
