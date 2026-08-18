@@ -2,6 +2,8 @@ mod builder;
 mod dist;
 mod error;
 mod fmt;
+mod fs;
+mod help;
 mod mobile;
 mod project;
 mod prompt;
@@ -10,10 +12,11 @@ mod signing;
 mod toolchain;
 mod ui;
 
+use crate::error::{Code, Context};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 
 use builder::Profile;
 use error::{Error, Result};
@@ -21,6 +24,7 @@ use project::Project;
 
 #[derive(Parser)]
 #[command(
+    disable_help_subcommand = true,
     name = "vkx",
     version,
     about = "Vulkan + SDL3 跨平台游戏工程脚手架",
@@ -79,6 +83,11 @@ enum Command {
     },
     /// 删除构建产物
     Clean,
+    /// 展开某个错误码，或者某个专题的详细说明
+    Help {
+        /// 错误码（如 E0003）或专题名；不给就列出所有专题
+        topic: Option<String>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -172,11 +181,12 @@ fn dispatch(cli: Cli) -> Result<u8> {
             let project = current_project()?;
             fmt::run(&project, check)
         }
+        Command::Help { topic } => help::run(topic.as_deref(), &mut Cli::command()),
         Command::Clean => {
             let project = current_project()?;
             let build_dir = project.root.join("build");
             if build_dir.exists() {
-                std::fs::remove_dir_all(&build_dir)?;
+                crate::fs::remove_dir_all(&build_dir)?;
                 ui::step(&format!("已删除 {}", pretty_path(&build_dir)));
             } else {
                 ui::info("没有构建产物需要清理。");
@@ -232,8 +242,11 @@ fn require_interactive(what: &str) -> Result<()> {
     if prompt::interactive() {
         return Ok(());
     }
-    Err(Error::new(format!("没有提供{what}，当前又不是交互式终端"))
-        .hint("非交互环境下请写全：vkx new <工程名> --package-id <包名>"))
+    Err(Error::new(
+        Code::Usage,
+        format!("没有提供{what}，当前又不是交互式终端"),
+        "非交互环境下请写全：vkx new <工程名> --package-id <包名>",
+    ))
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -249,7 +262,11 @@ enum Target {
 }
 
 fn current_project() -> Result<Project> {
-    Project::discover(&std::env::current_dir()?)
+    Project::discover(&std::env::current_dir().context(
+        Code::Io,
+        "取当前目录",
+        "确认当前目录还存在且有读权限",
+    )?)
 }
 
 fn profile(release: bool) -> Profile {

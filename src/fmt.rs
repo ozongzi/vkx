@@ -7,7 +7,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::error::{Error, Result};
+use crate::error::{Code, Error, Result};
 use crate::project::Project;
 use crate::toolchain;
 use crate::ui;
@@ -28,14 +28,14 @@ fn collect(root: &Path) -> Result<Vec<PathBuf>> {
 }
 
 fn collect_into(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
-    for entry in std::fs::read_dir(dir)? {
-        let path = entry?.path();
+    for entry in crate::fs::read_dir(dir)? {
+        let path = entry;
         if path.is_dir() {
             collect_into(&path, out)?;
-        } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-            if EXTENSIONS.contains(&ext) {
-                out.push(path);
-            }
+        } else if let Some(ext) = path.extension().and_then(|e| e.to_str())
+            && EXTENSIONS.contains(&ext)
+        {
+            out.push(path);
         }
     }
     Ok(())
@@ -52,8 +52,11 @@ fn relative(root: &Path, path: &Path) -> String {
 pub fn run(project: &Project, check: bool) -> Result<u8> {
     let config = project.root.join(".clang-format");
     if !config.is_file() {
-        return Err(Error::new("工程根目录下没有 .clang-format")
-            .hint("vkx new 生成的工程自带一份；手工建的工程需要自己补"));
+        return Err(Error::new(
+            Code::Environment,
+            "工程根目录下没有 .clang-format",
+            "vkx new 生成的工程自带一份；手工建的工程需要自己补",
+        ));
     }
 
     let clang_format = toolchain::clang_format()?;
@@ -77,7 +80,13 @@ pub fn run(project: &Project, check: bool) -> Result<u8> {
                 .arg(file)
                 .stderr(std::process::Stdio::null())
                 .status()
-                .map_err(|e| Error::new(format!("无法运行 clang-format: {e}")))?;
+                .map_err(|e| {
+                    Error::new(
+                        Code::MissingComponent,
+                        format!("无法运行 clang-format: {e}"),
+                        "运行 `vkx fetch` 取回工具链",
+                    )
+                })?;
             if !status.success() {
                 offenders.push(file.clone());
             }

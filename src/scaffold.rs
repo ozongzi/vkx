@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use include_dir::{Dir, include_dir};
 
-use crate::error::{Error, Result};
+use crate::error::{Code, Context, Error, Result};
 use crate::project;
 use crate::ui;
 
@@ -20,15 +20,20 @@ pub struct NewOptions {
 pub fn target_root(name: &str, path: Option<&Path>) -> Result<PathBuf> {
     match path {
         Some(path) => Ok(path.to_path_buf()),
-        None => Ok(std::env::current_dir()?.join(name)),
+        None => Ok(std::env::current_dir()
+            .context(Code::Io, "取当前目录", "确认当前目录还存在且有读权限")?
+            .join(name)),
     }
 }
 
 /// 目标目录必须不存在或为空，否则拒绝覆盖。
 pub fn ensure_available(root: &Path) -> Result<()> {
-    if root.exists() && std::fs::read_dir(root)?.next().is_some() {
-        return Err(Error::new(format!("{} 已存在且非空", root.display()))
-            .hint("换个名字，或先把那个目录清掉"));
+    if root.exists() && crate::fs::read_dir(root)?.into_iter().next().is_some() {
+        return Err(Error::new(
+            Code::Io,
+            format!("{} 已存在且非空", root.display()),
+            "换个名字，或先把那个目录清掉",
+        ));
     }
     Ok(())
 }
@@ -46,7 +51,7 @@ pub fn create(options: &NewOptions) -> Result<PathBuf> {
     ensure_available(&root)?;
 
     ui::step(&format!("创建工程 {}", root.display()));
-    std::fs::create_dir_all(&root)?;
+    crate::fs::create_dir_all(&root)?;
     write_dir(&TEMPLATE, &root, &options.name, &options.package_id)?;
 
     Ok(root)
@@ -55,19 +60,19 @@ pub fn create(options: &NewOptions) -> Result<PathBuf> {
 fn write_dir(dir: &Dir<'_>, root: &Path, name: &str, package_id: &str) -> Result<()> {
     for entry in dir.dirs() {
         let target = root.join(rewrite_path(entry.path(), package_id));
-        std::fs::create_dir_all(&target)?;
+        crate::fs::create_dir_all(&target)?;
         write_dir(entry, root, name, package_id)?;
     }
 
     for file in dir.files() {
         let target = root.join(rewrite_path(file.path(), package_id));
         if let Some(parent) = target.parent() {
-            std::fs::create_dir_all(parent)?;
+            crate::fs::create_dir_all(parent)?;
         }
 
         match std::str::from_utf8(file.contents()) {
-            Ok(text) => std::fs::write(&target, substitute(text, name, package_id))?,
-            Err(_) => std::fs::write(&target, file.contents())?,
+            Ok(text) => crate::fs::write(&target, substitute(text, name, package_id))?,
+            Err(_) => crate::fs::write(&target, file.contents())?,
         }
     }
     Ok(())

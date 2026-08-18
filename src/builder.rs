@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-use crate::error::{Error, Result};
+use crate::error::{Code, Error, Result};
 use crate::project::Project;
 use crate::toolchain;
 use crate::ui;
@@ -61,8 +61,11 @@ fn add_generator(command: &mut Command) -> Result<()> {
 
     if cfg!(windows) {
         let mingw = toolchain::llvm_mingw().ok_or_else(|| {
-            Error::new("Windows 上既没有 Visual Studio，也没有 llvm-mingw")
-                .hint("重新运行安装脚本，它会装一份 llvm-mingw")
+            Error::new(
+                Code::CommandFailed,
+                "Windows 上既没有 Visual Studio，也没有 llvm-mingw",
+                "重新运行安装脚本，它会装一份 llvm-mingw",
+            )
         })?;
         let bin = mingw.join("bin");
         command
@@ -86,14 +89,20 @@ fn add_generator(command: &mut Command) -> Result<()> {
 /// 看不出该装什么，所以在这里先拦一道。
 fn check_cxx_toolchain() -> Result<()> {
     if cfg!(target_os = "macos") && toolchain::xcode_developer_dir().is_none() {
-        return Err(Error::new("找不到 Xcode 命令行工具，编译 C++ 需要它")
-            .hint("执行：xcode-select --install")
-            .hint("Apple 的 SDK 不允许第三方分发，这是唯一要你手动装的东西"));
+        return Err(Error::new(
+            Code::CommandFailed,
+            "找不到 Xcode 命令行工具，编译 C++ 需要它",
+            "执行：xcode-select --install",
+        )
+        .hint("Apple 的 SDK 不允许第三方分发，这是唯一要你手动装的东西"));
     }
     if cfg!(target_os = "linux") && !std::path::Path::new("/usr/include/stdio.h").exists() {
-        return Err(Error::new("缺少 libc 的开发头文件，链接会失败")
-            .hint("Debian/Ubuntu：sudo apt install build-essential")
-            .hint("Fedora：sudo dnf install gcc-c++ glibc-devel"));
+        return Err(Error::new(
+            Code::CommandFailed,
+            "缺少 libc 的开发头文件，链接会失败",
+            "Debian/Ubuntu：sudo apt install build-essential",
+        )
+        .hint("Fedora：sudo dnf install gcc-c++ glibc-devel"));
     }
     Ok(())
 }
@@ -159,11 +168,11 @@ fn locate_executable(project: &Project, profile: Profile) -> Result<PathBuf> {
         .into_iter()
         .find(|path| path.is_file())
         .ok_or_else(|| {
-            Error::new(format!(
-                "编译完成，但在 {} 里没找到可执行文件",
-                build_dir.display()
-            ))
-            .hint("如果你改过 CMakeLists.txt 里的 target 名字，vkx.toml 的 name 也要一起改")
+            Error::new(
+                Code::CommandFailed,
+                format!("编译完成，但在 {} 里没找到可执行文件", build_dir.display()),
+                "如果你改过 CMakeLists.txt 里的 target 名字，vkx.toml 的 name 也要一起改",
+            )
         })
 }
 
@@ -177,9 +186,13 @@ pub fn run(project: &Project, profile: Profile, args: &[String]) -> Result<i32> 
     let mut command = Command::new(&executable);
     command.args(args).current_dir(&project.root);
 
-    let status = command
-        .status()
-        .map_err(|e| Error::new(format!("无法启动 {}: {e}", executable.display())))?;
+    let status = command.status().map_err(|e| {
+        Error::new(
+            Code::CommandFailed,
+            format!("无法启动 {}: {e}", executable.display()),
+            "确认构建成功且产物有执行权限；`vkx build` 重新编一次",
+        )
+    })?;
 
     let code = status.code().unwrap_or(-1);
     if code != 0 {

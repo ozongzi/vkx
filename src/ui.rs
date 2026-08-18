@@ -38,10 +38,16 @@ pub fn warn(text: &str) {
 }
 
 pub fn report(error: &Error) {
+    let code = error.code.id();
     eprintln!();
-    eprintln!("{} {}", paint("1;31", "错误:"), error.message);
+    eprintln!(
+        "{} {}",
+        paint("1;31", &format!("错误[{code}]:")),
+        error.message
+    );
     for hint in &error.hints {
         eprintln!("{} {}", paint("1;36", "提示:"), hint);
     }
+    eprintln!("{}", dim(&format!("      详细说明：vkx help {code}")));
     eprintln!();
 }

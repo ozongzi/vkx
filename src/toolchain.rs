@@ -13,7 +13,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::error::{Error, Result};
+use crate::error::{Code, Error, Result};
 
 pub fn home_dir() -> PathBuf {
     let key = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
@@ -79,12 +79,15 @@ pub fn clang_format() -> Result<PathBuf> {
 }
 
 fn missing(tool: &str, expected: &str) -> Error {
-    Error::new(format!("找不到 {tool}"))
-        .hint(format!(
+    Error::new(
+        Code::MissingComponent,
+        format!("找不到 {tool}"),
+        format!(
             "安装脚本应该把它装在 {}",
             vkx_home().join(expected).display()
-        ))
-        .hint("重新运行安装脚本即可补齐")
+        ),
+    )
+    .hint("重新运行安装脚本即可补齐")
 }
 
 // ---------------------------------------------------------------------------
@@ -95,14 +98,18 @@ fn missing(tool: &str, expected: &str) -> Error {
 pub fn run(command: &mut Command, what: &str) -> Result<()> {
     let rendered = render(command);
     let status = command.status().map_err(|e| {
-        Error::new(format!("无法执行 {what}: {e}")).hint(format!("命令: {rendered}"))
+        Error::new(
+            Code::MissingComponent,
+            format!("无法执行 {what}: {e}"),
+            format!("命令: {rendered}"),
+        )
     })?;
     if !status.success() {
-        return Err(Error::new(format!(
-            "{what}失败（退出码 {}）",
-            status.code().unwrap_or(-1)
-        ))
-        .hint(format!("命令: {rendered}")));
+        return Err(Error::new(
+            Code::MissingComponent,
+            format!("{what}失败（退出码 {}）", status.code().unwrap_or(-1)),
+            format!("命令: {rendered}"),
+        ));
     }
     Ok(())
 }
@@ -210,10 +217,9 @@ pub fn source_dir(name: &str) -> Option<PathBuf> {
 /// SDL3 的 Android .aar，供 Gradle 的 prefab 使用。
 pub fn sdl_android_aar() -> Result<PathBuf> {
     let dir = vkx_home().join("src/sdl3-android");
-    let found = std::fs::read_dir(&dir).ok().and_then(|entries| {
+    let found = crate::fs::read_dir(&dir).ok().and_then(|entries| {
         entries
-            .filter_map(|e| e.ok())
-            .map(|e| e.path())
+            .into_iter()
             .find(|path| path.extension().is_some_and(|ext| ext == "aar"))
     });
     found.ok_or_else(|| missing("SDL3 的 Android aar", "src/sdl3-android"))
@@ -303,10 +309,9 @@ pub fn android_ndk() -> Option<PathBuf> {
         }
     }
     let ndk_root = android_sdk()?.join("ndk");
-    let mut versions: Vec<PathBuf> = std::fs::read_dir(&ndk_root)
+    let mut versions: Vec<PathBuf> = crate::fs::read_dir(&ndk_root)
         .ok()?
-        .filter_map(|entry| entry.ok())
-        .map(|entry| entry.path())
+        .into_iter()
         .filter(|path| path.is_dir())
         .collect();
     versions.sort();
@@ -344,8 +349,11 @@ pub fn moltenvk_lib(device: bool) -> Result<PathBuf> {
     };
     let library = xcframework.join(slice).join("libMoltenVK.a");
     if !library.is_file() {
-        return Err(Error::new(format!("MoltenVK 里没有 {slice} 这个切片"))
-            .hint("镜像上的 MoltenVK 包可能不完整，重新同步后再装一次"));
+        return Err(Error::new(
+            Code::MissingComponent,
+            format!("MoltenVK 里没有 {slice} 这个切片"),
+            "镜像上的 MoltenVK 包可能不完整，重新同步后再装一次",
+        ));
     }
     Ok(library)
 }

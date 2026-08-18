@@ -37,10 +37,10 @@ pub fn ensure_keystore(project_root: &Path, package_id: &str) -> Result<PathBuf>
     let password = random_password();
 
     if let Some(parent) = keystore.parent() {
-        std::fs::create_dir_all(parent)?;
+        crate::fs::create_dir_all(parent)?;
     }
     // 重新生成时先清掉半成品，否则 keytool 会往旧库里追加。
-    let _ = std::fs::remove_file(&keystore);
+    let _ = crate::fs::remove_file(&keystore);
 
     ui::step("生成 Android release 签名密钥");
     let mut command = Command::new(&keytool);
@@ -75,7 +75,7 @@ pub fn ensure_keystore(project_root: &Path, package_id: &str) -> Result<PathBuf>
          keyAlias={ALIAS}\n\
          keyPassword={password}\n"
     );
-    std::fs::write(&properties, content)?;
+    crate::fs::write(&properties, content)?;
 
     ui::info(&format!("密钥 {}", keystore.display()));
     ui::info(&format!("口令 {}", properties.display()));

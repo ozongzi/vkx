@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::builder::{self, Profile};
-use crate::error::{Error, Result};
+use crate::error::{Code, Error, Result};
 use crate::project::Project;
 use crate::signing;
 use crate::toolchain;
@@ -17,8 +17,11 @@ use crate::ui;
 fn run_gradle_task(project: &Project, profile: Profile, task: &str) -> Result<PathBuf> {
     let android_dir = project.root.join("android");
     if !android_dir.is_dir() {
-        return Err(Error::new("工程里没有 android/ 目录")
-            .hint("用新版 vkx new 生成的工程才带 Android 支持"));
+        return Err(Error::new(
+            Code::Environment,
+            "工程里没有 android/ 目录",
+            "用新版 vkx new 生成的工程才带 Android 支持",
+        ));
     }
 
     let sdk = toolchain::require_android_sdk()?;
@@ -32,12 +35,12 @@ fn run_gradle_task(project: &Project, profile: Profile, task: &str) -> Result<Pa
     // SDL3 的 Android 版以官方 .aar 提供，放进 app/libs/ 后 Gradle 的 prefab
     // 会把头文件、libSDL3.so 和 SDLActivity 一起接进来。
     let libs = android_dir.join("app").join("libs");
-    std::fs::create_dir_all(&libs)?;
+    crate::fs::create_dir_all(&libs)?;
     let source_aar = toolchain::sdl_android_aar()?;
     let file_name = source_aar.file_name().unwrap_or_default();
     let target_aar = libs.join(file_name);
     if !target_aar.is_file() {
-        std::fs::copy(&source_aar, &target_aar)?;
+        crate::fs::copy(&source_aar, &target_aar)?;
     }
 
     // release 包要签名；密钥一般在 vkx new 时就生成好了，缺了就现在补。
@@ -100,10 +103,11 @@ pub fn build_android(project: &Project, profile: Profile) -> Result<PathBuf> {
         .into_iter()
         .find(|path| path.is_file())
         .ok_or_else(|| {
-            Error::new(format!(
-                "Gradle 跑完了，但 {} 里没有 apk",
-                output_dir.display()
-            ))
+            Error::new(
+                Code::CommandFailed,
+                format!("Gradle 跑完了，但 {} 里没有 apk", output_dir.display()),
+                "看上面 Gradle 的输出找真正的失败原因",
+            )
         })
 }
 
@@ -112,10 +116,11 @@ pub fn bundle_android(project: &Project) -> Result<PathBuf> {
     let android_dir = run_gradle_task(project, Profile::Release, "bundleRelease")?;
     let aab = android_dir.join("app/build/outputs/bundle/release/app-release.aab");
     if !aab.is_file() {
-        return Err(Error::new(format!(
-            "Gradle 跑完了，但没找到 {}",
-            aab.display()
-        )));
+        return Err(Error::new(
+            Code::CommandFailed,
+            format!("Gradle 跑完了，但没找到 {}", aab.display()),
+            "看上面 Gradle 的输出找真正的失败原因",
+        ));
     }
     Ok(aab)
 }
@@ -124,14 +129,19 @@ pub fn run_android(project: &Project, profile: Profile) -> Result<i32> {
     let apk = build_android(project, profile)?;
 
     if apk.to_string_lossy().contains("-unsigned") {
-        return Err(
-            Error::new(format!("{} 没有签名，无法安装到设备", apk.display()))
-                .hint("检查 android/keystore.properties 是否存在（vkx new 时会生成）"),
-        );
+        return Err(Error::new(
+            Code::Environment,
+            format!("{} 没有签名，无法安装到设备", apk.display()),
+            "检查 android/keystore.properties 是否存在（vkx new 时会生成）",
+        ));
     }
 
     let adb = toolchain::adb().ok_or_else(|| {
-        Error::new("找不到 adb").hint("安装脚本会把它装在 ~/.vkx/android/sdk/platform-tools")
+        Error::new(
+            Code::Environment,
+            "找不到 adb",
+            "安装脚本会把它装在 ~/.vkx/android/sdk/platform-tools",
+        )
     })?;
 
     ensure_device_connected(&adb)?;
@@ -174,10 +184,13 @@ fn ensure_device_connected(adb: &Path) -> Result<()> {
     if connected {
         return Ok(());
     }
-    Err(Error::new("没有已连接的 Android 设备")
-        .hint("真机：打开「开发者选项 → USB 调试」并允许本机调试")
-        .hint("模拟器：先在 Android Studio 的 Device Manager 里启动一个 AVD")
-        .hint("确认连上了可以跑：adb devices"))
+    Err(Error::new(
+        Code::Environment,
+        "没有已连接的 Android 设备",
+        "真机：打开「开发者选项 → USB 调试」并允许本机调试",
+    )
+    .hint("模拟器：先在 Android Studio 的 Device Manager 里启动一个 AVD")
+    .hint("确认连上了可以跑：adb devices"))
 }
 
 fn prepend_to_path(directory: &Path) -> std::ffi::OsString {
@@ -191,7 +204,7 @@ fn write_local_properties(android_dir: &Path, sdk: &Path) -> Result<()> {
     // Gradle 读 local.properties 找 SDK；路径里的反斜杠要转义（Windows）。
     let escape = |path: &Path| path.display().to_string().replace('\\', "\\\\");
     let content = format!("# 由 vkx 生成，不要提交进版本库\nsdk.dir={}\n", escape(sdk));
-    std::fs::write(android_dir.join("local.properties"), content)?;
+    crate::fs::write(&android_dir.join("local.properties"), content)?;
     Ok(())
 }
 
@@ -204,17 +217,26 @@ fn write_local_properties(android_dir: &Path, sdk: &Path) -> Result<()> {
 /// 命令行构建和在 Xcode 里打开的是同一个工程，改配置只有这一处。
 pub fn configure_ios(project: &Project, device: bool) -> Result<PathBuf> {
     if !cfg!(target_os = "macos") {
-        return Err(Error::new("iOS 构建只能在 macOS 上进行"));
+        return Err(Error::new(
+            Code::Environment,
+            "iOS 构建只能在 macOS 上进行",
+            "iOS 工具链只有 macOS 版；别的系统上只能构建 desktop 和 android",
+        ));
     }
     if toolchain::xcodebuild().is_none() {
-        return Err(Error::new("找不到 xcodebuild")
-            .hint("从 App Store 安装 Xcode（Apple 的 SDK 无法由 vkx 代为分发）")
-            .hint("装好后执行：sudo xcode-select -s /Applications/Xcode.app"));
+        return Err(Error::new(
+            Code::Environment,
+            "找不到 xcodebuild",
+            "从 App Store 安装 Xcode（Apple 的 SDK 无法由 vkx 代为分发）",
+        )
+        .hint("装好后执行：sudo xcode-select -s /Applications/Xcode.app"));
     }
     if !project.root.join("ios/Info.plist").is_file() {
-        return Err(
-            Error::new("工程里没有 ios/Info.plist").hint("用新版 vkx new 生成的工程才带 iOS 支持")
-        );
+        return Err(Error::new(
+            Code::Environment,
+            "工程里没有 ios/Info.plist",
+            "用新版 vkx new 生成的工程才带 iOS 支持",
+        ));
     }
 
     let cmake = toolchain::require_cmake()?;
@@ -266,10 +288,11 @@ pub fn configure_ios(project: &Project, device: bool) -> Result<PathBuf> {
 
     let xcodeproj = build_dir.join(format!("{}.xcodeproj", project.name));
     if !xcodeproj.is_dir() {
-        return Err(Error::new(format!(
-            "配置完成，但没找到 {}",
-            xcodeproj.display()
-        )));
+        return Err(Error::new(
+            Code::CommandFailed,
+            format!("配置完成，但没找到 {}", xcodeproj.display()),
+            "删掉 target/ios 后重试；仍然失败请连同上面 CMake 的输出一起反馈",
+        ));
     }
 
     // 这个工程可以直接用 Xcode 打开，调试、连真机都在里面做。
@@ -320,7 +343,11 @@ pub fn build_ios(project: &Project, profile: Profile, device: bool) -> Result<Pa
         .join(format!("{}-{sysroot}", profile.cmake_config()))
         .join(format!("{}.app", project.name));
     if !app.is_dir() {
-        return Err(Error::new(format!("编译完成，但没找到 {}", app.display())));
+        return Err(Error::new(
+            Code::CommandFailed,
+            format!("编译完成，但没找到 {}", app.display()),
+            "看上面 xcodebuild 的输出找真正的失败原因",
+        ));
     }
     Ok(app)
 }
@@ -384,8 +411,11 @@ fn boot_simulator() -> Result<String> {
         .filter_map(parse_udid)
         .next()
         .ok_or_else(|| {
-            Error::new("没有可用的 iOS 模拟器")
-                .hint("Xcode → Settings → Components 里安装一个 iOS Simulator 运行时")
+            Error::new(
+                Code::Environment,
+                "没有可用的 iOS 模拟器",
+                "Xcode → Settings → Components 里安装一个 iOS Simulator 运行时",
+            )
         })?;
 
     ui::step("启动模拟器");

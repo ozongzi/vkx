@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::error::{Error, Result};
+use crate::error::{Code, Error, Result};
 
 /// 一个 vkx 工程：由工程根目录下的 vkx.toml 标识。
 pub struct Project {
@@ -16,9 +16,13 @@ pub struct Project {
 impl Project {
     /// 从当前目录往上找 vkx.toml（跟 cargo 找 Cargo.toml 一个套路）。
     pub fn discover(start: &Path) -> Result<Self> {
-        let start = start
-            .canonicalize()
-            .map_err(|e| Error::new(format!("无法访问 {}: {e}", start.display())))?;
+        let start = start.canonicalize().map_err(|e| {
+            Error::new(
+                Code::Io,
+                format!("无法访问 {}: {e}", start.display()),
+                "确认这个目录存在且有读权限",
+            )
+        })?;
 
         for directory in start.ancestors() {
             let manifest = directory.join("vkx.toml");
@@ -27,19 +31,28 @@ impl Project {
             }
         }
 
-        Err(
-            Error::new("当前目录不在任何 vkx 工程里（往上都没找到 vkx.toml）")
-                .hint("先 cd 进工程目录，或用 `vkx new <名字>` 新建一个"),
-        )
+        Err(Error::new(
+            Code::NotAProject,
+            "当前目录不在任何 vkx 工程里（往上都没找到 vkx.toml）",
+            "先 cd 进工程目录，或用 `vkx new <名字>` 新建一个",
+        ))
     }
 
     fn load(root: &Path, manifest: &Path) -> Result<Self> {
-        let text = std::fs::read_to_string(manifest)
-            .map_err(|e| Error::new(format!("读不了 {}: {e}", manifest.display())))?;
+        let text = crate::fs::read_to_string(manifest).map_err(|e| {
+            Error::new(
+                Code::Io,
+                format!("读不了 {}: {e}", manifest.display()),
+                "确认文件存在且有读权限",
+            )
+        })?;
 
         let name = value_of(&text, "project", "name").ok_or_else(|| {
-            Error::new(format!("{} 里缺少 [project] name 字段", manifest.display()))
-                .hint("格式: name = \"mygame\"")
+            Error::new(
+                Code::BadManifest,
+                format!("{} 里缺少 [project] name 字段", manifest.display()),
+                "格式: name = \"mygame\"",
+            )
         })?;
         let package_id = value_of(&text, "project", "package_id")
             .unwrap_or_else(|| format!("com.example.{name}"));
@@ -160,19 +173,25 @@ const JAVA_KEYWORDS: &[&str] = &[
 pub fn validate_package_id(package_id: &str) -> Result<()> {
     for segment in package_id.split('.') {
         if segment.is_empty() {
-            return Err(Error::new(format!("包名 `{package_id}` 里有空的一段"))
-                .hint("形如 com.example.mygame"));
+            return Err(Error::new(
+                Code::NotAProject,
+                format!("包名 `{package_id}` 里有空的一段"),
+                "形如 com.example.mygame",
+            ));
         }
         if !segment.chars().next().unwrap().is_ascii_alphabetic() {
-            return Err(Error::new(format!(
-                "包名的每一段都要以字母开头：`{segment}`"
-            )));
+            return Err(Error::new(
+                Code::BadManifest,
+                format!("包名的每一段都要以字母开头：`{segment}`"),
+                "例如 com.example.game；数字和下划线可以出现在段中间但不能开头",
+            ));
         }
         if JAVA_KEYWORDS.contains(&segment) {
-            return Err(Error::new(format!(
-                "包名里的 `{segment}` 是 Java 关键字，Android 编不过"
-            ))
-            .hint("换一个不含 Java 关键字的包名，例如 com.example.game"));
+            return Err(Error::new(
+                Code::BadManifest,
+                format!("包名里的 `{segment}` 是 Java 关键字，Android 编不过"),
+                "换一个不含 Java 关键字的包名，例如 com.example.game",
+            ));
         }
     }
     Ok(())
@@ -181,20 +200,28 @@ pub fn validate_package_id(package_id: &str) -> Result<()> {
 /// 工程名要同时能当 CMake target、可执行文件名和 Android 包名的一段。
 pub fn validate_name(name: &str) -> Result<()> {
     if name.is_empty() {
-        return Err(Error::new("工程名不能为空"));
+        return Err(Error::new(
+            Code::BadManifest,
+            "工程名不能为空",
+            "在 vkx.toml 的 [project] 里填 name，或者 vkx new 时用命令行给出",
+        ));
     }
     if !name.chars().next().unwrap().is_ascii_alphabetic() {
-        return Err(Error::new(format!("工程名 `{name}` 必须以英文字母开头"))
-            .hint("它会被用作可执行文件名和 Android 包名的一部分"));
+        return Err(Error::new(
+            Code::BadManifest,
+            format!("工程名 `{name}` 必须以英文字母开头"),
+            "它会被用作可执行文件名和 Android 包名的一部分",
+        ));
     }
     if let Some(bad) = name
         .chars()
         .find(|c| !c.is_ascii_alphanumeric() && *c != '_' && *c != '-')
     {
-        return Err(
-            Error::new(format!("工程名 `{name}` 里有不允许的字符 `{bad}`"))
-                .hint("只能用字母、数字、下划线和连字符"),
-        );
+        return Err(Error::new(
+            Code::NotAProject,
+            format!("工程名 `{name}` 里有不允许的字符 `{bad}`"),
+            "只能用字母、数字、下划线和连字符",
+        ));
     }
     Ok(())
 }
