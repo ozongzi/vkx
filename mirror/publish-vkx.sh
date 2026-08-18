@@ -66,6 +66,5 @@ printf '%s\n' "$VERSION" > "$OUT/vkx/version.txt"
 # 安装脚本也放进镜像根，读者 curl 一个地址就够了。
 cp "$HERE/../install/install.sh" "$HERE/../install/install.ps1" "$OUT/"
 
-printf '\n%s 个平台就位。上传：\n' "$count" >&2
-printf '  rsync -av --delete %s/vkx/ root@yinli.tech:/var/www/file/vkx/\n' "$OUT" >&2
-printf '  rsync -av %s/install.sh %s/install.ps1 root@yinli.tech:/var/www/file/\n' "$OUT" "$OUT" >&2
+printf '\n%s 个平台就位：%s\n' "$count" "$OUT" >&2
+printf '接下来把 %s/vkx/ 和两个安装脚本放到镜像根下（见 DEPLOY.md）。\n' "$OUT" >&2
