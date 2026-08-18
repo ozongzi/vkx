@@ -75,7 +75,7 @@ bool Application::create_instance()
         // 记下来给 debug.cpp 用：没挂上层就别去建 messenger。
         validation_enabled = true;
     } else {
-        SDL_LogWarn(SDL_LOG_CATEGORY_GPU, "校验层不可用，跳过（装了 Vulkan SDK 就会有）");
+        SDL_LogWarn(SDL_LOG_CATEGORY_GPU, "校验层不可用，跳过。执行 `vkx fetch` 补上 SDK 的 vulkan 组件");
     }
 #endif
 

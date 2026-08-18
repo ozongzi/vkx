@@ -395,6 +395,62 @@ pub fn moltenvk_dylib_dir() -> Option<PathBuf> {
     dir.join("libMoltenVK.dylib").is_file().then_some(dir)
 }
 
+// ---------------------------------------------------------------------------
+// 运行期
+// ---------------------------------------------------------------------------
+
+/// 启动游戏前要补的环境变量。
+///
+/// SDK 里带了 Vulkan 的 loader、ICD 和校验层，但它们在 ~/.vkx 下，不在系统的
+/// 搜索路径上——不指过去，程序起来就是「找不到 Vulkan 运行时」，哪怕东西就在
+/// 硬盘上躺着。
+///
+/// macOS 上不能靠 DYLD_LIBRARY_PATH：SIP 会在 /usr/bin/env、/bin/sh 这些受保护
+/// 的二进制 exec 时把 DYLD_* 全部剥掉，路上随便经过一层就没了。改成用 SDL 的
+/// SDL_VULKAN_LIBRARY 直接给绝对路径，跟中间经过谁无关。
+///
+/// 这一点是有区别的：走不到 loader 就没有层，程序照样能跑，只是校验层静悄悄
+/// 地不见了——而这一章从头到尾都在教「以校验层的报错为准」。
+///
+/// 返回的是「要追加的值」，调用方负责和进程里已有的值拼起来：读者机器上可能
+/// 装了别的 Vulkan SDK，我们只往前面插，不覆盖。
+pub fn vulkan_runtime_env() -> Vec<(&'static str, PathBuf)> {
+    let vulkan = vkx_home().join("sdk/vulkan/vulkan");
+    if !vulkan.is_dir() {
+        return Vec::new();
+    }
+    let mut env = Vec::new();
+    let lib = vulkan.join("lib");
+
+    if cfg!(target_os = "macos") {
+        // macOS 上系统不带 loader，只能用 SDK 里这份。
+        let loader = lib.join("libvulkan.1.dylib");
+        if loader.is_file() {
+            env.push(("SDL_VULKAN_LIBRARY", loader));
+        }
+        // ICD 也要指：Windows 和 Linux 的显卡驱动会自己注册，macOS 没人注册。
+        let icd = vulkan.join("share/vulkan/icd.d/MoltenVK_icd.json");
+        if icd.is_file() {
+            env.push(("VK_ICD_FILENAMES", icd));
+        }
+    } else if lib.is_dir() {
+        // 这两个平台的 loader 由驱动提供，我们只补校验层的动态库目录。
+        let key = if cfg!(windows) {
+            "PATH"
+        } else {
+            "LD_LIBRARY_PATH"
+        };
+        env.push((key, lib));
+    }
+
+    // 校验层三个平台都要指——它不在任何标准位置上。
+    let layers = vulkan.join("share/vulkan/explicit_layer.d");
+    if layers.is_dir() {
+        env.push(("VK_LAYER_PATH", layers));
+    }
+    env
+}
+
 pub fn xcodebuild() -> Option<PathBuf> {
     which("xcodebuild")
 }

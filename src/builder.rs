@@ -181,10 +181,31 @@ pub fn run(project: &Project, profile: Profile, args: &[String]) -> Result<i32> 
     let executable = build(project, profile)?;
 
     ui::step(&format!("运行 {}", executable.display()));
-    // 运行环境（PATH、macOS 上找 MoltenVK 用的 DYLD_LIBRARY_PATH）由安装脚本
-    // 写进 ~/.vkx/env.sh 并接到 shell 里，这里原样继承即可。
     let mut command = Command::new(&executable);
     command.args(args).current_dir(&project.root);
+
+    // Vulkan 的 loader / ICD / 校验层都在 SDK 里，但不在系统搜索路径上。
+    // 不在这里指过去，程序起来就报「找不到 Vulkan 运行时」——东西明明就在
+    // 硬盘上。往前面插，不覆盖：读者机器上可能另装了 Vulkan SDK。
+    for (key, value) in toolchain::vulkan_runtime_env() {
+        let merged = match std::env::var_os(key) {
+            // 这两个是「就用这一个」，不是搜索路径，拼接反而会读不出来。
+            Some(existing)
+                if !existing.is_empty()
+                    && key != "VK_ICD_FILENAMES"
+                    && key != "SDL_VULKAN_LIBRARY" =>
+            {
+                let separator = if cfg!(windows) { ";" } else { ":" };
+                format!(
+                    "{}{separator}{}",
+                    value.display(),
+                    existing.to_string_lossy()
+                )
+            }
+            _ => value.display().to_string(),
+        };
+        command.env(key, merged);
+    }
 
     let status = command.status().map_err(|e| {
         Error::new(
