@@ -27,6 +27,18 @@ OUT=${3:?}
 
 ORDER="toolchain libs vulkan sources android"
 
+# 包必须是可重定位的：读者解到 ~/.vkx/sdk 下，里面不能有任何指向打包机器的
+# 路径。真栽过——volk 自带的 CMake 包把打包机的绝对路径写进了
+# INTERFACE_INCLUDE_DIRECTORIES，读者一 configure 就报「路径不存在」，而
+# 打包机上跑什么都对。用 -I 跳过二进制，只查文本。
+STAGING_ABS=$(cd "$STAGING" && pwd)
+if leaked=$(grep -rIl "$STAGING_ABS" "$STAGING_ABS" 2>/dev/null) && [ -n "$leaked" ]; then
+    echo "这些文件里写着打包机器的绝对路径，读者机器上不存在：" >&2
+    printf '%s\n' "$leaked" | sed "s|$STAGING_ABS/|  |" >&2
+    echo "包不可重定位，不打。" >&2
+    exit 1
+fi
+
 mkdir -p "$OUT"
 PACK="$OUT/sdk-$PLATFORM.pack"
 MANIFEST="$OUT/manifest.txt"

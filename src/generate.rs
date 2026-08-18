@@ -221,12 +221,12 @@ endif()
 # volk 在运行期加载 Vulkan 函数指针，链接期就不必依赖 loader。
 # iOS 不需要它：那边静态链接 MoltenVK，函数本来就在二进制里。
 #
-# SDK 装的那份导出的是 volk::volk，FetchContent 出来的是裸的 volk，
-# 名字不一样，所以用一个变量把差异收在这里。
+# volk 就一个 .c，自己编，不用 find_package——它自带的 CMake 包会把打包机器
+# 的绝对路径写进 INTERFACE_INCLUDE_DIRECTORIES，在读者机器上是不存在的路径。
 if(NOT IOS)
-    find_package(volk QUIET CONFIG)
-    if(volk_FOUND)
-        set(VKX_VOLK volk::volk)
+    if(EXISTS \"${{VKX_SDK_LIBS}}/include/volk.c\")
+        add_library(volk STATIC \"${{VKX_SDK_LIBS}}/include/volk.c\")
+        target_include_directories(volk PUBLIC \"${{VKX_SDK_LIBS}}/include\")
     else()
         message(STATUS \"vkx: SDK 里没有 volk，从源码取\")
         FetchContent_Declare(volk
@@ -235,8 +235,10 @@ if(NOT IOS)
             GIT_SHALLOW TRUE)
         set(VOLK_PULL_IN_VULKAN OFF CACHE BOOL \"\" FORCE)
         FetchContent_MakeAvailable(volk)
-        target_link_libraries(volk PUBLIC Vulkan::Headers)
-        set(VKX_VOLK volk)
+    endif()
+    target_link_libraries(volk PUBLIC Vulkan::Headers)
+    if(NOT WIN32)
+        target_link_libraries(volk PUBLIC ${{CMAKE_DL_LIBS}})
     endif()
 endif()
 
@@ -283,7 +285,7 @@ if(IOS)
     target_compile_definitions(${{VKX_TARGET}} PRIVATE VKX_STATIC_VULKAN=1)
 else()
     # VK_NO_PROTOTYPES 去掉头文件里的声明，改由 volk 提供同名函数指针。
-    target_link_libraries(${{VKX_TARGET}} PRIVATE ${{VKX_VOLK}})
+    target_link_libraries(${{VKX_TARGET}} PRIVATE volk)
     target_compile_definitions(${{VKX_TARGET}} PRIVATE VK_NO_PROTOTYPES)
 endif()
 

@@ -88,14 +88,18 @@ echo "== Vulkan-Headers $VULKAN_HEADERS" >&2
 fetch "$GH/KhronosGroup/Vulkan-Headers/archive/refs/tags/v$VULKAN_HEADERS.tar.gz" vulkan-headers
 cmake_build "$WORK/vulkan-headers"
 
-echo "== volk $VOLK" >&2
+# volk 统共就 volk.h 和 volk.c 两个文件，拷过去就行，不在这里编。
+#
+# 它自带的 CMake 安装也能用，但导出的 volkTargets.cmake 会把打包机器上的
+# 绝对路径原样写进 INTERFACE_INCLUDE_DIRECTORIES：
+#
+#   INTERFACE_INCLUDE_DIRECTORIES "${IMPORT_PREFIX}/include;/Users/runner/work/..."
+#
+# 那个路径在读者机器上不存在，CMake 直接报错，整个包就不可重定位了。
+# 我们自己编 volk.c 反而更省事：一个文件，不到一秒。
+echo "== volk ${VOLK}（只拷源码）" >&2
 fetch "$GH/zeux/volk/archive/refs/tags/$VOLK.tar.gz" volk
-# VULKAN_HEADERS_INSTALL_DIR 只在 VOLK_PULL_IN_VULKAN 打开时才生效，
-# 所以两个要一起给：让 volk 吃上面刚装的那份头文件，而不是去找系统的。
-# 关掉的话 volk.c 连 vulkan/vulkan.h 都找不到。
-cmake_build "$WORK/volk" \
-    -DVOLK_INSTALL=ON -DVOLK_HEADERS_ONLY=OFF \
-    -DVOLK_PULL_IN_VULKAN=ON -DVULKAN_HEADERS_INSTALL_DIR="$OUT"
+cp "$WORK/volk/volk.h" "$WORK/volk/volk.c" "$OUT/include/"
 
 # ---------------------------------------------------------------------------
 # 只有头文件的：拷进去就能 #include，不用编也不用声明
@@ -117,6 +121,17 @@ for pair in "sdl3 LICENSE.txt" "zlib LICENSE" "mbedtls LICENSE" "freetype LICENS
             "glm copying.txt" "vulkan-headers LICENSE.md" "volk LICENSE.md"; do
     name=${pair%% *}; file=${pair#* }
     [ -f "$WORK/$name/$file" ] && cp "$WORK/$name/$file" "$OUT/licenses/$name.txt" || true
+done
+
+# pkg-config 的 .pc 里也烤着打包机器的绝对路径。我们的构建不走 pkg-config，
+# 但发出去的文件不该写着谎话。改成相对 .pc 自身的位置。
+find "$OUT" -name '*.pc' | while read -r pc; do
+    depth=$(printf '%s' "${pc#"$OUT"/}" | tr -cd '/' | wc -c | tr -d ' ')
+    up=""; i=0
+    while [ "$i" -lt "$depth" ]; do up="$up/.."; i=$((i + 1)); done
+    # 不能只改 prefix：zlib 把绝对路径同时写进了 exec_prefix、libdir、
+    # sharedlibdir。整串替换，哪个键写了都一起改掉。
+    sed "s|$OUT|\${pcfiledir}$up|g" "$pc" > "$pc.new" && mv "$pc.new" "$pc"
 done
 
 printf '\nlibs 组件建好了：%s\n' "$OUT" >&2
