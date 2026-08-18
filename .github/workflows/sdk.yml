@@ -297,7 +297,9 @@ jobs:
             last=$(awk '/^component /{c=$2} END{print c}' "$d/manifest.txt")
             home=$(mktemp -d)
             echo "── ${platform}：取 ${last}"
-            env -i HOME="$home" PATH= \
+            # USERPROFILE 一并给：Windows 上 vkx 认的是它。这里跑在 Linux
+            # 上用不着，但和 verify-pack.sh 保持一致，免得下次谁照抄漏掉。
+            env -i HOME="$home" USERPROFILE="$home" PATH= \
               VKX_MIRROR="http://127.0.0.1:8971" VKX_PLATFORM="$platform" \
               ./target/release/vkx fetch --component "$last"
             files=$(find "$home/.vkx/sdk/$last" -type f | wc -l | tr -d ' ')

@@ -18,11 +18,22 @@ use std::process::Command;
 
 use crate::error::{Code, Error, Result};
 
+/// 用户主目录。找不到就退回当前目录——但会先喊一声。
+///
+/// 静默退回当前目录是个很不好查的坑：`vkx fetch` 会把几百 MB 装到你随手所在
+/// 的那个目录里，而且报告成功，直到后面某一步说「找不到 cmake」才暴露。
 pub fn home_dir() -> PathBuf {
     let key = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
-    std::env::var_os(key)
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."))
+    match std::env::var_os(key) {
+        Some(dir) => PathBuf::from(dir),
+        None => {
+            crate::ui::warn(&format!(
+                "环境变量 {key} 没有设置，只能把 ~/.vkx 当成当前目录下的 .vkx。\n\
+                 要装到别处就设 VKX_HOME。"
+            ));
+            PathBuf::from(".")
+        }
+    }
 }
 
 /// 安装脚本铺好的环境根目录。
