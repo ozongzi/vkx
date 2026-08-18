@@ -268,6 +268,8 @@ jobs:
         run: |
           set -eu
           mkdir -p site/sdk
+          # glob 没匹配上时 shell 会把字面量当成唯一一项，静默摊出一个空站点。
+          [ -d "$(echo dist/sdk-* | cut -d' ' -f1)" ] || { echo "没收到任何 pack 产物"; exit 1; }
           for d in dist/sdk-*; do
             platform=${d#dist/sdk-}
             mkdir -p "site/sdk/$platform"
@@ -298,12 +300,12 @@ jobs:
             env -i HOME="$home" PATH= \
               VKX_MIRROR="http://127.0.0.1:8971" VKX_PLATFORM="$platform" \
               ./target/release/vkx fetch --component "$last"
-            files=$(find "$home/.vkx/sdk/$last" -type f | wc -l)
+            files=$(find "$home/.vkx/sdk/$last" -type f | wc -l | tr -d ' ')
             [ "$files" -gt 0 ] || { echo "$platform 的 $last 是空的"; exit 1; }
             echo "   ✓ $files 个文件"
             rm -rf "$home"
           done
-          echo "六个平台的发布地址都能取到。"
+          echo "$(ls site/sdk | wc -l | tr -d ' ') 个平台的发布地址都能取到。"
 
       # 资产名带上平台，避免六个 manifest.txt 互相覆盖。
       # 另外打一个 site.tar，解开就是镜像目录，方便一条 rsync 上传。
