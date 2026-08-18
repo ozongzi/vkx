@@ -288,6 +288,33 @@ endif()
         package_id = project.package_id,
     ));
 
+    // ---- 从源码编的库 ----
+    if !project.libs.is_empty() {
+        s.push_str(
+            "\n\
+# ---------------------------------------------------------------------------\n\
+# 从源码编的库（vkx.toml 的 [libs] 里打开的）\n\
+# ---------------------------------------------------------------------------\n\
+# 预编译的 C 库和只有头文件的库不出现在这里——它们随时可用，直接 #include。\n",
+        );
+        for lib in crate::project::SOURCE_LIBS {
+            if !project.libs.iter().any(|l| l == lib.key) {
+                continue;
+            }
+            let dir = crate::toolchain::source_dir(lib.key)
+                .map(|d| d.display().to_string())
+                .unwrap_or_else(|| format!("$ENV{{HOME}}/.vkx/sdk/src/{}", lib.key));
+            s.push_str(&format!(
+                "\n# {about}\nadd_subdirectory(\"{dir}\" {key} EXCLUDE_FROM_ALL)\n\
+                 target_link_libraries(${{VKX_TARGET}} PRIVATE {target})\n",
+                about = lib.about,
+                dir = dir,
+                key = lib.key,
+                target = lib.target,
+            ));
+        }
+    }
+
     // ---- 着色器 ----
     s.push_str(
         "\n\

@@ -18,10 +18,14 @@ vkx fetch --all
 VKX_MIRROR=https://example.com/vkx vkx fetch    # 换站点
 ```
 
-### 为什么是 zip 而不是 tar.gz
+### 容器：多个 .tar.gz 首尾相接
 
-`tar.gz` 是整体压缩流，取中间一段必须从头解到那里。zip 每个条目独立压缩，
-配合 HTTP `Range` 就能只下需要的那几段。这是「取一部分」唯一可行的容器。
+原本想用 zip，但 zip 的中央目录在文件末尾——取中间一段拿到的字节不是合法
+zip，还得自己实现解压。
+
+gzip 流可以首尾相接（多成员 gzip，标准允许），于是改成：每个组件各压一个
+`.tar.gz`，按顺序拼成一个文件。**每一段单独拿出来仍然是合法的 `.tar.gz`**，
+`tar xzf` 直接能解，不用写任何解析代码。
 
 ### 打包时按组件排序，让每个组件是一段连续字节
 
@@ -64,8 +68,22 @@ sdk-macos-arm64.zip
 
 ### 站点要求
 
-只要支持 `Range`（Caddy 的 `file_server` 默认支持）。没有 `Accept-Ranges` 时
-退化成整包下载，并提示一句。
+只要支持 `Range`（Caddy 的 `file_server` 默认支持）。服务器忽略 `Range` 时会把
+整个包发回来，vkx 按下载字节数当场拦下并说清原因，而不是等到 sha256 失败。
+
+### 实测
+
+用一个 22 MB 的测试包（toolchain 513 B / libs 2 MB / android 20 MB），
+默认的 `vkx fetch` 只取桌面需要的两段：
+
+```
+/sdk/macos-arm64/manifest.txt        422
+/sdk/macos-arm64/sdk-macos-arm64.pack        513
+/sdk/macos-arm64/sdk-macos-arm64.pack    2001286
+合计 2002221 字节 / 整包 22008595 字节 = 9.1%
+```
+
+再跑一次只传清单的 422 字节，其余全部跳过。
 
 ---
 

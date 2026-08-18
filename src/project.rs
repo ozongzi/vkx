@@ -11,6 +11,8 @@ pub struct Project {
     pub version: String,
     /// vkx.toml 里 [ios] development_team，填了才能构建 iOS 真机包。
     pub development_team: Option<String>,
+    /// [libs] 里被打开的、要从源码编的库。
+    pub libs: Vec<String>,
 }
 
 impl Project {
@@ -58,6 +60,11 @@ impl Project {
             .unwrap_or_else(|| format!("com.example.{name}"));
         let version = value_of(&text, "project", "version").unwrap_or_else(|| "0.1.0".to_string());
         let development_team = value_of(&text, "ios", "development_team");
+        let libs = SOURCE_LIBS
+            .iter()
+            .filter(|lib| value_of(&text, "libs", lib.key).as_deref() == Some("true"))
+            .map(|lib| lib.key.to_string())
+            .collect();
 
         Ok(Self {
             root: root.to_path_buf(),
@@ -65,6 +72,7 @@ impl Project {
             package_id,
             version,
             development_team,
+            libs,
         })
     }
 
@@ -105,6 +113,11 @@ fn value_of(text: &str, section: &str, key: &str) -> Option<String> {
         if left.trim() != key {
             continue;
         }
+        // 去掉行尾注释：只在 # 前面有空白时才算注释，值里的 # 不受影响。
+        let right = match right.find(" #").or_else(|| right.find("\t#")) {
+            Some(at) => &right[..at],
+            None => right,
+        };
         let value = right.trim().trim_matches('"').trim();
         if !value.is_empty() {
             return Some(value.to_string());
@@ -230,3 +243,26 @@ pub fn validate_name(name: &str) -> Result<()> {
     }
     Ok(())
 }
+
+/// 要从源码编译的库。预编译的 C 库和只有头文件的库永远可用，不需要开关——
+/// 链接一个没被引用的静态库几乎不花钱，而这两个各自是几分钟的编译时间。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SourceLib {
+    pub key: &'static str,
+    /// CMake 里 add_subdirectory 之后要链的 target 名
+    pub target: &'static str,
+    pub about: &'static str,
+}
+
+pub const SOURCE_LIBS: &[SourceLib] = &[
+    SourceLib {
+        key: "jolt",
+        target: "Jolt",
+        about: "物理引擎",
+    },
+    SourceLib {
+        key: "gamenetworking",
+        target: "GameNetworkingSockets::static",
+        about: "局内实时传输",
+    },
+];

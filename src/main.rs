@@ -1,6 +1,9 @@
 mod builder;
+mod deps;
 mod dist;
+mod doctor;
 mod error;
+mod fetch;
 mod fmt;
 mod fs;
 mod generate;
@@ -9,6 +12,7 @@ mod mobile;
 mod project;
 mod prompt;
 mod scaffold;
+mod selfupdate;
 mod signing;
 mod toolchain;
 mod ui;
@@ -84,6 +88,30 @@ enum Command {
     },
     /// 删除构建产物
     Clean,
+    /// 从镜像取工具链组件（只下需要的那几段）
+    Fetch {
+        /// 只取这一个组件；不给就取桌面构建需要的那几个
+        #[arg(long)]
+        component: Option<String>,
+        /// 全部取回来，包括 Android 那几 GB
+        #[arg(long)]
+        all: bool,
+    },
+    /// 检查环境，报告缺什么、怎么补
+    Doctor,
+    /// vkx 自身的维护
+    #[command(subcommand)]
+    #[command(name = "self")]
+    Selfcmd(SelfCommand),
+    /// 打开一个要从源码编译的库
+    Add {
+        /// 库名；`vkx deps` 列出可选项
+        name: String,
+    },
+    /// 关掉一个之前打开的库
+    Remove { name: String },
+    /// 列出可用的库，以及哪些正在参与构建
+    Deps,
     /// 展开某个错误码，或者某个专题的详细说明
     Help {
         /// 错误码（如 E0003）或专题名；不给就列出所有专题
@@ -91,7 +119,18 @@ enum Command {
     },
 }
 
+#[derive(Subcommand)]
+enum SelfCommand {
+    /// 从镜像更新 vkx 自己
+    Update {
+        /// 只看有没有新版，不真的更新
+        #[arg(long)]
+        check: bool,
+    },
+}
+
 fn main() -> ExitCode {
+    selfupdate::sweep_old();
     let cli = Cli::parse();
     match dispatch(cli) {
         Ok(code) => ExitCode::from(code),
@@ -181,6 +220,21 @@ fn dispatch(cli: Cli) -> Result<u8> {
         Command::Fmt { check } => {
             let project = current_project()?;
             fmt::run(&project, check)
+        }
+        Command::Fetch { component, all } => fetch::run(component.as_deref(), all),
+        Command::Doctor => doctor::run(),
+        Command::Selfcmd(SelfCommand::Update { check }) => selfupdate::run(check),
+        Command::Add { name } => {
+            let project = current_project()?;
+            deps::add(&project, &name)
+        }
+        Command::Remove { name } => {
+            let project = current_project()?;
+            deps::remove(&project, &name)
+        }
+        Command::Deps => {
+            let project = current_project()?;
+            deps::list(&project)
         }
         Command::Help { topic } => help::run(topic.as_deref(), &mut Cli::command()),
         Command::Clean => {
