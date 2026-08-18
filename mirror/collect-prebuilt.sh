@@ -37,12 +37,14 @@ echo "== 按 sync.sh 的规则取 cmake / ninja / slang / clang-format / vulkan"
 # 而 Ubuntu 的 /bin/sh 是 dash，没有 pipefail，第 20 行就报错。
 # macOS 和 Git Bash 的 /bin/sh 都是 bash 伪装，所以这个错只在 Linux 上出现。
 bash "$HERE/sync.sh" "$WORK/mirror" --platform "$SYNC_PLATFORM" \
-    --only cmake,ninja,slang,clang-format,vulkan-sdk,moltenvk >&2
+    --only cmake,ninja,slang,clang-format,llvm-mingw,vulkan-sdk,moltenvk >&2
 
 # sync.sh 产出的是「解开即是安装目录内容」的包，直接摊进对应组件。
 # moltenvk 只有 macOS 有，找不到就跳过——不是错误。
+# llvm-mingw 只有 Windows 有，moltenvk 只有 macOS 有，其余平台会走「跳过」。
 for pair in "cmake toolchain/cmake" "ninja toolchain/ninja" \
             "slang toolchain/slang" "clang-format toolchain/clang-format" \
+            "llvm-mingw toolchain/llvm-mingw" \
             "vulkan-sdk vulkan/vulkan" "moltenvk vulkan/moltenvk"; do
     name=${pair%% *}; dest=${pair#* }
     archive=$(find "$WORK/mirror/$name" -name '*.tar.gz' 2>/dev/null | head -1) || true
@@ -54,8 +56,14 @@ for pair in "cmake toolchain/cmake" "ninja toolchain/ninja" \
     tar xzf "$archive" -C "$STAGING/$dest"
 done
 
-# 少了这两个的话后面 vkx 一定跑不起来，宁可在这里炸。
-for must in toolchain/cmake toolchain/ninja toolchain/slang vulkan/vulkan; do
+# 少了这几个的话后面 vkx 一定跑不起来，宁可在这里炸。
+MUST="toolchain/cmake toolchain/ninja toolchain/slang vulkan/vulkan"
+case $PLATFORM in
+    # Windows 上没有可用的系统编译器：MSVC 不许分发、也不许用（用了的话
+    # SDK 里 mingw 编的 .a 和读者的 MSVC ABI 对不上）。所以编译器必须自带。
+    windows-*) MUST="$MUST toolchain/llvm-mingw" ;;
+esac
+for must in $MUST; do
     if [ -z "$(ls -A "$STAGING/$must" 2>/dev/null)" ]; then
         echo "$PLATFORM: $must 是空的，sync.sh 没产出这个组件" >&2
         exit 1
