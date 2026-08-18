@@ -97,8 +97,16 @@ jobs:
               ;;
             Linux)
               sudo apt-get update -qq
-              sudo apt-get install -y ninja-build zstd libx11-dev libxext-dev \
-                  libxrandr-dev libxi-dev libxcursor-dev libxfixes-dev >/dev/null
+              # SDL 的检测是「全有或全无」：只要它认出了 X11，就要求整套
+              # X11 扩展头都在，缺一个就 SDL_missing_dependency 直接失败。
+              # Wayland 同理。所以这里按 SDL3 README-linux 装全，不挑。
+              sudo apt-get install -y ninja-build zstd \
+                  libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev \
+                  libxfixes-dev libxss-dev libxtst-dev libxkbcommon-dev \
+                  libwayland-dev wayland-protocols libdecor-0-dev \
+                  libdrm-dev libgbm-dev libgl1-mesa-dev libegl1-mesa-dev \
+                  libdbus-1-dev libibus-1.0-dev libudev-dev \
+                  libasound2-dev libpulse-dev libpipewire-0.3-dev >/dev/null
               ;;
             Windows)
               choco install ninja zstandard --no-progress -y >/dev/null

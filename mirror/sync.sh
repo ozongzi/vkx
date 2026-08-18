@@ -21,6 +21,22 @@ set -euo pipefail
 
 OUT=${1:-./mirror-root}
 shift || true
+# --only / --platform 收的是逗号分隔的列表；空列表表示「全都要」。
+# 之前这里是单名精确匹配，传 a,b,c 会一个都不匹配——而且是静默的，
+# 产出一个空包，下游的 diff 拿空目录比空目录还会「通过」。
+in_list() {
+    [ -n "$1" ] || return 0
+    _rest=$1
+    while [ -n "$_rest" ]; do
+        case $_rest in
+            *,*) _head=${_rest%%,*}; _rest=${_rest#*,} ;;
+            *)   _head=$_rest;       _rest= ;;
+        esac
+        [ "$_head" != "$2" ] || return 0
+    done
+    return 1
+}
+
 ONLY=""
 PLATFORM_FILTER=""
 SKIP=""
@@ -57,8 +73,8 @@ sha256() {
 # 平台用 any 表示与平台无关。安装目标是相对 ~/.vkx 的路径。
 fetch() {
     local name=$1 version=$2 platform=$3 url=$4 dest=$5 pick=${6:-}
-    [ -z "$ONLY" ] || [ "$ONLY" = "$name" ] || return 0
-    [ -z "$PLATFORM_FILTER" ] || [ "$PLATFORM_FILTER" = "$platform" ] || [ "$platform" = any ] || return 0
+    in_list "$ONLY" "$name" || return 0
+    [ "$platform" = any ] || in_list "$PLATFORM_FILTER" "$platform" || return 0
     case ",$SKIP," in *",$name,"*) return 0 ;; esac
 
     # 同一个上游文件常常服务多个平台（比如 macOS 的包是通用二进制，

@@ -59,7 +59,38 @@ fn home() -> PathBuf {
 }
 
 /// 本机对应哪个平台的包。
+pub const PLATFORMS: &[&str] = &[
+    "macos-arm64",
+    "macos-x64",
+    "linux-arm64",
+    "linux-x64",
+    "windows-arm64",
+    "windows-x64",
+];
+
+/// 本机平台，也就是去镜像上找哪一个 SDK 包。
+///
+/// `VKX_PLATFORM` 可以覆盖它。这不是给读者用的——是给我们发包时用的：
+/// 交叉编出来的包（比如在 arm64 机器上编的 macos-x64）必须能在编它的那台机器上
+/// 自检，否则「包是不是拼对了」这个问题只能等读者去发现。
 pub fn platform() -> &'static str {
+    static OVERRIDE: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    let chosen = OVERRIDE.get_or_init(|| std::env::var("VKX_PLATFORM").ok());
+    if let Some(name) = chosen {
+        if let Some(known) = PLATFORMS.iter().find(|p| *p == name) {
+            return known;
+        }
+        // 不认识就当没设——真去下载时会报「取不到清单」，那个错更难查，
+        // 所以这里先把话说清楚。
+        eprintln!(
+            "警告：VKX_PLATFORM={name} 不是已知平台，忽略。可选：{}",
+            PLATFORMS.join("、")
+        );
+    }
+    host_platform()
+}
+
+fn host_platform() -> &'static str {
     match (std::env::consts::OS, std::env::consts::ARCH) {
         ("macos", "aarch64") => "macos-arm64",
         ("macos", _) => "macos-x64",

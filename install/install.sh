@@ -30,7 +30,7 @@ platform="$os-$arch"
 
 command -v curl >/dev/null 2>&1 || die "缺少 curl"
 
-step "取 vkx（$platform）"
+step "取 vkx（${platform}）"
 mkdir -p "$VKX_HOME/bin"
 tmp=$(mktemp)
 version=$(curl -fsSL "$MIRROR/vkx/version.txt") || die "取不到版本信息，检查网络或换 VKX_MIRROR"
