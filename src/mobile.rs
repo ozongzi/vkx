@@ -88,6 +88,10 @@ fn flavor_of(profile: Profile) -> &'static str {
 
 /// 出 APK。
 pub fn build_android(project: &Project, profile: Profile) -> Result<PathBuf> {
+    // 桌面那三个组件之外还要 android（JDK / Gradle / SDK / NDK）。它有 1.3 GB，
+    // 所以只在真的要出 APK 时才取——桌面读者的 vkx build 碰都不会碰到它。
+    crate::fetch::ensure(&["toolchain", "libs", "vulkan", "android"])?;
+
     let flavor = flavor_of(profile);
     let task = match profile {
         Profile::Debug => "assembleDebug",
