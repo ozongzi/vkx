@@ -15,7 +15,7 @@
 # 不需要再 strip 层级。安装脚本因此只要「下载 -> 校验 -> 解压到 dest」三步。
 #
 # 同步完把整棵树 rsync 到服务器，让它以 HTTPS 提供即可：
-#   rsync -av --delete mirror-root/ user@host:/var/www/file/
+#   rsync -av --delete mirror-root/ root@yinli.tech:/var/www/file/
 
 set -euo pipefail
 
@@ -355,4 +355,4 @@ done
 log "完成"
 info "清单: ${MANIFEST}（$(wc -l < "$MANIFEST" | tr -d ' ') 条）"
 info "总量: $(du -sh "$OUT" | cut -f1)"
-info "上传: rsync -av --delete $OUT/ user@host:/var/www/file/"
+info "上传: rsync -av --delete $OUT/ root@yinli.tech:/var/www/file/"

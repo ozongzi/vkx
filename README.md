@@ -61,7 +61,7 @@ mirror/sync.sh mirror-root --platform macos-arm64  # 只同步一个平台
 mirror/sync.sh mirror-root --skip android-ndk      # 跳过某些组件
 VKX_LOCAL_BIN=target/release/vkx mirror/sync.sh mirror-root   # 还没发版时用本机编的 vkx
 
-rsync -av --delete mirror-root/ user@host:/var/www/file/   # 对应 yinli.tech/file
+rsync -av --delete mirror-root/ root@yinli.tech:/var/www/file/   # 就是 vkx 默认的镜像
 ```
 
 同一个上游文件服务多个平台时（macOS 的通用二进制、Windows 的 x64 包等）

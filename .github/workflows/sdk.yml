@@ -30,9 +30,79 @@ jobs:
   # ---------------------------------------------------------------------------
   # 平台无关的部分先做一次，各平台共用
   # ---------------------------------------------------------------------------
+  lint:
+    name: 脚本体检
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # 这三条都是真栽过的跟头，每一次都要烧掉一轮二十分钟的矩阵才暴露，
+      # 所以放在最前面当门禁。
+      - name: 按各自声明的解释器做语法检查
+        run: |
+          set -eu
+          for f in mirror/*.sh install/*.sh; do
+            case "$(head -1 "$f")" in
+              *bash*) bash -n "$f" ;;
+              *)      dash -n "$f" ;;   # Ubuntu 的 /bin/sh 是 dash，比 bash 严
+            esac
+            echo "✓ $f"
+          done
+
+      # dash -n 只查语法。`[[ ]]` 这种在 dash 眼里是个合法的命令名，
+      # 要到运行时才报 not found，所以还得靠 shellcheck 的 SC3xxx——
+      # 那一族的意思正好就是「POSIX sh 里没有这个」。
+      # 只看 SC3xxx，其余风格问题不拦。
+      - name: POSIX 脚本别混进 bash 语法
+        run: |
+          set -eu
+          bad=0
+          for f in mirror/*.sh install/*.sh; do
+            head -1 "$f" | grep -q bash && continue
+            if shellcheck -s sh -f gcc "$f" 2>/dev/null | grep 'SC3' ; then
+              bad=1
+            fi
+          done
+          [ "$bad" -eq 0 ] || { echo "↑ 这些写法在 Ubuntu 的 dash 上会炸"; exit 1; }
+          echo "✓ 没有 bash 语法混入"
+
+      - name: 别用 sh 去调 bash 脚本
+        run: |
+          set -eu
+          bad=0
+          for f in mirror/*.sh install/*.sh; do
+            head -1 "$f" | grep -q bash || continue
+            name=$(basename "$f")
+            # 用 sh 调会覆盖掉 shebang，dash 上 set -o pipefail 直接报错。
+            # 前面要卡词边界，否则 `bash x.sh` 里的 "sh " 也会被算上；
+            # 行首的 # 要排掉，注释里提这件事不算犯这件事。
+            if grep -rnE "(^|[[:space:];&|(])sh +[^ ]*$name" \
+                 --include='*.sh' --include='*.yml' . | grep -v ':[[:space:]]*#' ; then
+              echo "↑ $name 声明的是 bash，却被 sh 调用"
+              bad=1
+            fi
+          done
+          [ "$bad" -eq 0 ] || exit 1
+          echo "✓ 没有解释器错配"
+
+      - name: 变量名后面别紧跟中文
+        run: |
+          set -eu
+          # "$name（...）" 里的全角括号会被 shell 当成变量名的一部分，
+          # set -u 下直接崩。要写成 ${name}。
+          # 不用 grep -P：macOS 的 BSD grep 没有，本地就没法自己验这条了。
+          # LC_ALL=C 下高位字节既不是 [:print:] 也不是 [:space:]。
+          if LC_ALL=C grep -rnE '\$[A-Za-z_][A-Za-z0-9_]*[^[:print:][:space:]]' \
+               --include='*.sh' --include='*.yml' . \
+               | grep -v '\${' | grep -v ':[[:space:]]*#' ; then
+            echo "↑ 变量名后面紧跟了非 ASCII 字符，加大括号"
+            exit 1
+          fi
+          echo "✓ 没有这个陷阱"
+
   sources:
     name: sources（平台无关）
     runs-on: ubuntu-latest
+    needs: lint
     steps:
       - uses: actions/checkout@v4
       - name: 取 Jolt 和 GameNetworkingSockets 源码
@@ -48,6 +118,7 @@ jobs:
   # ---------------------------------------------------------------------------
   plan:
     runs-on: ubuntu-latest
+    needs: lint
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
@@ -181,11 +252,103 @@ jobs:
     needs: pack
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           pattern: sdk-*
           path: dist
+
+      # 摊成镜像真正要对外提供的目录结构。vkx 请求的是
+      #   <镜像>/sdk/<平台>/manifest.txt
+      #   <镜像>/sdk/<平台>/sdk-<平台>.pack
+      # 每个平台各有一个 manifest.txt，名字是撞的——所以不能直接把 dist/**
+      # 平铺成 release 资产，得先按平台分目录，上传时再改成带平台名的资产名。
+      - name: 摊成镜像目录
+        run: |
+          set -eu
+          mkdir -p site/sdk
+          for d in dist/sdk-*; do
+            platform=${d#dist/sdk-}
+            mkdir -p "site/sdk/$platform"
+            cp "$d/manifest.txt" "$d/sdk-$platform.pack" "site/sdk/$platform/"
+          done
+          find site -type f | sort
+          du -sh site
+
+      - name: 装 Rust 并编 vkx
+        run: cargo build --release
+
+      # 每个包在自己那个 job 里已经逐字节比对过了。这一步验的是另一件事：
+      # 摊出来的目录结构对不对——清单能不能按 <平台> 找到、Range 请求能不能
+      # 落在正确的偏移上。取每个平台清单里的最后一段，因为它偏移最大，拼接
+      # 时算错一个字节最先在这里暴露。取到了就说明 sha256 也对上了。
+      - name: 按发布后的地址再验一遍
+        run: |
+          set -eu
+          python3 mirror/rangeserver.py 8971 site &
+          server=$!
+          trap 'kill $server 2>/dev/null || true' EXIT
+          sleep 1
+          for d in site/sdk/*; do
+            platform=$(basename "$d")
+            last=$(awk '/^component /{c=$2} END{print c}' "$d/manifest.txt")
+            home=$(mktemp -d)
+            echo "── ${platform}：取 ${last}"
+            env -i HOME="$home" PATH= \
+              VKX_MIRROR="http://127.0.0.1:8971" VKX_PLATFORM="$platform" \
+              ./target/release/vkx fetch --component "$last"
+            files=$(find "$home/.vkx/sdk/$last" -type f | wc -l)
+            [ "$files" -gt 0 ] || { echo "$platform 的 $last 是空的"; exit 1; }
+            echo "   ✓ $files 个文件"
+            rm -rf "$home"
+          done
+          echo "六个平台的发布地址都能取到。"
+
+      # 资产名带上平台，避免六个 manifest.txt 互相覆盖。
+      # 另外打一个 site.tar，解开就是镜像目录，方便一条 rsync 上传。
+      - name: 备好 release 资产
+        run: |
+          set -eu
+          mkdir -p assets
+          for d in site/sdk/*; do
+            platform=$(basename "$d")
+            cp "$d/sdk-$platform.pack" assets/
+            cp "$d/manifest.txt" "assets/manifest-$platform.txt"
+          done
+          tar cf assets/site.tar -C site .
+          ls -la assets
+
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: sdk-${{ github.run_number }}
-          files: dist/**/*
+          name: SDK ${{ github.run_number }}
+          body: |
+            六个平台的 SDK 包，已按发布后的地址逐个验过。
+
+            这里只是存档。vkx 默认从 `https://yinli.tech/file` 取，
+            要让它生效得把目录摊到站点上：
+
+            ```
+            mkdir -p site && tar xf site.tar -C site
+            rsync -av --delete site/sdk/ root@yinli.tech:/var/www/file/sdk/
+            ```
+
+            `--delete` 只打在 `sdk/` 这一层。镜像根上还有 `install.sh` 和
+            `vkx/` 下的二进制，打在根上会把它们一起删掉。
+          files: assets/*
+
+      - name: 写上传命令到摘要
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          ## 上传到镜像
+
+          ```sh
+          gh release download sdk-${{ github.run_number }} -R ${{ github.repository }} -p site.tar
+          mkdir -p site && tar xf site.tar -C site
+          rsync -av --delete site/sdk/ root@yinli.tech:/var/www/file/sdk/
+          ```
+
+          `--delete` 只打在 `sdk/` 这一层。镜像根上还有 `install.sh` 和 `vkx/`
+          下的二进制，打在根上会把它们一起删掉。
+          EOF

@@ -33,7 +33,10 @@ case $PLATFORM in
 esac
 
 echo "== 按 sync.sh 的规则取 cmake / ninja / slang / clang-format / vulkan" >&2
-sh "$HERE/sync.sh" "$WORK/mirror" --platform "$SYNC_PLATFORM" \
+# 必须用 bash 调：sync.sh 的 shebang 是 bash，用 sh 调会把 shebang 覆盖掉，
+# 而 Ubuntu 的 /bin/sh 是 dash，没有 pipefail，第 20 行就报错。
+# macOS 和 Git Bash 的 /bin/sh 都是 bash 伪装，所以这个错只在 Linux 上出现。
+bash "$HERE/sync.sh" "$WORK/mirror" --platform "$SYNC_PLATFORM" \
     --only cmake,ninja,slang,clang-format,vulkan-sdk,moltenvk >&2
 
 # sync.sh 产出的是「解开即是安装目录内容」的包，直接摊进对应组件。
