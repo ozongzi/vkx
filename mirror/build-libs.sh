@@ -81,6 +81,22 @@ cmake_build "$WORK/freetype" \
     -DFT_DISABLE_PNG=ON \
     -DFT_REQUIRE_ZLIB=ON -DCMAKE_PREFIX_PATH="$OUT"
 
+# Vulkan-Headers 和 volk 也进包。这两个原本是生成的 CMakeLists 里用
+# FetchContent 从 GitHub 拉的，意味着每次首次构建都要联网——跟「依赖全部
+# 预置好」是矛盾的。它们都很小，装进来就彻底不用出网了。
+echo "== Vulkan-Headers $VULKAN_HEADERS" >&2
+fetch "$GH/KhronosGroup/Vulkan-Headers/archive/refs/tags/v$VULKAN_HEADERS.tar.gz" vulkan-headers
+cmake_build "$WORK/vulkan-headers"
+
+echo "== volk $VOLK" >&2
+fetch "$GH/zeux/volk/archive/refs/tags/$VOLK.tar.gz" volk
+# VULKAN_HEADERS_INSTALL_DIR 只在 VOLK_PULL_IN_VULKAN 打开时才生效，
+# 所以两个要一起给：让 volk 吃上面刚装的那份头文件，而不是去找系统的。
+# 关掉的话 volk.c 连 vulkan/vulkan.h 都找不到。
+cmake_build "$WORK/volk" \
+    -DVOLK_INSTALL=ON -DVOLK_HEADERS_ONLY=OFF \
+    -DVOLK_PULL_IN_VULKAN=ON -DVULKAN_HEADERS_INSTALL_DIR="$OUT"
+
 # ---------------------------------------------------------------------------
 # 只有头文件的：拷进去就能 #include，不用编也不用声明
 # ---------------------------------------------------------------------------
@@ -97,7 +113,8 @@ cp -R "$WORK/glm/glm" "$OUT/include/glm"
 
 # 许可证一并带上，读者分发游戏时用得到
 mkdir -p "$OUT/licenses"
-for pair in "sdl3 LICENSE.txt" "zlib LICENSE" "mbedtls LICENSE" "freetype LICENSE.TXT" "glm copying.txt"; do
+for pair in "sdl3 LICENSE.txt" "zlib LICENSE" "mbedtls LICENSE" "freetype LICENSE.TXT" \
+            "glm copying.txt" "vulkan-headers LICENSE.md" "volk LICENSE.md"; do
     name=${pair%% *}; file=${pair#* }
     [ -f "$WORK/$name/$file" ] && cp "$WORK/$name/$file" "$OUT/licenses/$name.txt" || true
 done

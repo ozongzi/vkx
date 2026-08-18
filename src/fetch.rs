@@ -47,15 +47,11 @@ pub fn mirror() -> String {
 }
 
 /// SDK 根目录：解开的组件都在这下面。
+///
+/// 走 toolchain::vkx_home()，不要自己再算一遍 HOME——那边认 VKX_HOME，
+/// 这边不认的话，设了 VKX_HOME 就会变成「装到一个地方、去另一个地方找」。
 pub fn sdk_dir() -> PathBuf {
-    home().join(".vkx/sdk")
-}
-
-fn home() -> PathBuf {
-    std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."))
+    crate::toolchain::vkx_home().join("sdk")
 }
 
 /// 本机对应哪个平台的包。
@@ -355,8 +351,8 @@ pub fn fetch_component(manifest: &Manifest, component: &Component) -> Result<()>
 
     let mb = component.length as f64 / 1_048_576.0;
     let url = format!("{}/sdk/{}/{}", mirror(), platform(), manifest.pack);
-    let cache = home()
-        .join(".vkx/cache")
+    let cache = crate::toolchain::vkx_home()
+        .join("cache")
         .join(format!("{}.tar.gz", component.name));
 
     download(

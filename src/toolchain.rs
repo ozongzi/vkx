@@ -1,14 +1,17 @@
 //! 工具链探测。
 //!
-//! vkx 自己不下载任何东西：环境由安装脚本（install.sh / install.ps1）从镜像
-//! 铺到 ~/.vkx 下，这里只负责找到它们。找不到就报错，让用户重跑安装脚本。
+//! 安装脚本只装 vkx 本身，其余全部来自 `vkx fetch` 取下来的 SDK 包。
+//! 这里只负责找到它们，找不到就报错，让用户 `vkx fetch`。
 //!
-//! ~/.vkx 的布局：
+//! ~/.vkx 的布局。sdk/ 下面一个组件一个目录，和清单里的组件名一一对应——
+//! fetch 就是按这个对应关系解包的，所以这里的路径必须跟着组件走：
+//!
 //!   bin/vkx
-//!   tools/{cmake,ninja,slang,jdk,gradle,moltenvk,llvm-mingw}
-//!   android/sdk/{cmdline-tools,platform-tools,build-tools,platforms,ndk}
-//!   src/{sdl3,sdl3-android,vulkan-headers,volk}     构建时离线取用的源码
-//!   env.sh                                          给用户 shell 用的环境
+//!   sdk/toolchain/{cmake,ninja,slang,clang-format,llvm-mingw}
+//!   sdk/vulkan/{vulkan,moltenvk}
+//!   sdk/libs/{include,lib}                         预编译的 C 库和头文件
+//!   sdk/sources/{jolt,gamenetworkingsockets}       要从源码编的那几个
+//!   sdk/android/{jdk,gradle,sdk}                   移动端打包用（暂未进包）
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -123,7 +126,7 @@ fn version_at_least(program: &Path, minimum: (u32, u32)) -> bool {
 /// clang-format。只用 vkx 装的那份——版本不同格式化结果就不同，
 /// 而教程的每一步 diff 都假设所有人格式化出来一模一样。
 pub fn clang_format() -> Result<PathBuf> {
-    let relative = format!("tools/clang-format/{}", exe("clang-format"));
+    let relative = format!("sdk/toolchain/clang-format/{}", exe("clang-format"));
     managed_only(&relative).ok_or_else(|| missing("clang-format", &relative))
 }
 
@@ -131,12 +134,9 @@ fn missing(tool: &str, expected: &str) -> Error {
     Error::new(
         Code::MissingComponent,
         format!("找不到 {tool}"),
-        format!(
-            "安装脚本应该把它装在 {}",
-            vkx_home().join(expected).display()
-        ),
+        format!("它应该在 {}", vkx_home().join(expected).display()),
     )
-    .hint("重新运行安装脚本即可补齐")
+    .hint("执行 `vkx fetch` 把 SDK 组件补齐")
 }
 
 // ---------------------------------------------------------------------------
@@ -186,26 +186,30 @@ fn render(command: &Command) -> String {
 
 pub fn find_cmake() -> Option<PathBuf> {
     system_or_managed(
-        &format!("tools/cmake/bin/{}", exe("cmake")),
+        &format!("sdk/toolchain/cmake/bin/{}", exe("cmake")),
         "cmake",
         (3, 24),
     )
 }
 
 pub fn require_cmake() -> Result<PathBuf> {
-    find_cmake().ok_or_else(|| missing("cmake", "tools/cmake"))
+    find_cmake().ok_or_else(|| missing("cmake", "sdk/toolchain/cmake"))
 }
 
 pub fn find_ninja() -> Option<PathBuf> {
-    system_or_managed(&format!("tools/ninja/{}", exe("ninja")), "ninja", (1, 10))
+    system_or_managed(
+        &format!("sdk/toolchain/ninja/{}", exe("ninja")),
+        "ninja",
+        (1, 10),
+    )
 }
 
 pub fn require_ninja() -> Result<PathBuf> {
-    find_ninja().ok_or_else(|| missing("ninja", "tools/ninja"))
+    find_ninja().ok_or_else(|| missing("ninja", "sdk/toolchain/ninja"))
 }
 
 pub fn find_slangc() -> Option<PathBuf> {
-    let managed = vkx_home().join(format!("tools/slang/bin/{}", exe("slangc")));
+    let managed = vkx_home().join(format!("sdk/toolchain/slang/bin/{}", exe("slangc")));
     if managed.is_file() {
         return Some(managed);
     }
@@ -222,12 +226,12 @@ pub fn find_slangc() -> Option<PathBuf> {
 }
 
 pub fn require_slangc() -> Result<PathBuf> {
-    find_slangc().ok_or_else(|| missing("slangc（Slang 着色器编译器）", "tools/slang"))
+    find_slangc().ok_or_else(|| missing("slangc（Slang 着色器编译器）", "sdk/toolchain/slang"))
 }
 
 /// llvm-mingw 里的 clang，Windows 上没有 MSVC 时用它。
 pub fn llvm_mingw() -> Option<PathBuf> {
-    let dir = vkx_home().join("tools/llvm-mingw");
+    let dir = vkx_home().join("sdk/toolchain/llvm-mingw");
     dir.join("bin").join(exe("clang")).is_file().then_some(dir)
 }
 
@@ -257,7 +261,7 @@ pub fn sdl_android_aar() -> Result<PathBuf> {
 // ---------------------------------------------------------------------------
 
 pub fn jdk() -> Option<PathBuf> {
-    let managed = vkx_home().join("tools/jdk");
+    let managed = vkx_home().join("sdk/android/jdk");
     if managed.join("bin").join(exe("java")).is_file() {
         return Some(managed);
     }
@@ -272,13 +276,13 @@ pub fn jdk() -> Option<PathBuf> {
 }
 
 pub fn require_jdk() -> Result<PathBuf> {
-    jdk().ok_or_else(|| missing("JDK", "tools/jdk"))
+    jdk().ok_or_else(|| missing("JDK", "sdk/android/jdk"))
 }
 
 pub fn keytool() -> Result<PathBuf> {
     let path = require_jdk()?.join("bin").join(exe("keytool"));
     if !path.is_file() {
-        return Err(missing("keytool", "tools/jdk/bin"));
+        return Err(missing("keytool", "sdk/android/jdk/bin"));
     }
     Ok(path)
 }
@@ -289,7 +293,7 @@ pub fn find_gradle() -> Option<PathBuf> {
     } else {
         "gradle"
     };
-    let managed = vkx_home().join("tools/gradle/bin").join(name);
+    let managed = vkx_home().join("sdk/android/gradle/bin").join(name);
     if managed.is_file() {
         return Some(managed);
     }
@@ -297,11 +301,11 @@ pub fn find_gradle() -> Option<PathBuf> {
 }
 
 pub fn require_gradle() -> Result<PathBuf> {
-    find_gradle().ok_or_else(|| missing("gradle", "tools/gradle"))
+    find_gradle().ok_or_else(|| missing("gradle", "sdk/android/gradle"))
 }
 
 pub fn android_sdk() -> Option<PathBuf> {
-    let managed = vkx_home().join("android/sdk");
+    let managed = vkx_home().join("sdk/android/sdk");
     if managed.is_dir() {
         return Some(managed);
     }
@@ -324,7 +328,7 @@ pub fn android_sdk() -> Option<PathBuf> {
 }
 
 pub fn require_android_sdk() -> Result<PathBuf> {
-    android_sdk().ok_or_else(|| missing("Android SDK", "android/sdk"))
+    android_sdk().ok_or_else(|| missing("Android SDK", "sdk/android/sdk"))
 }
 
 /// SDK 下可能并存多个 NDK 版本，取版本号最大的。
@@ -346,7 +350,7 @@ pub fn android_ndk() -> Option<PathBuf> {
 }
 
 pub fn require_android_ndk() -> Result<PathBuf> {
-    android_ndk().ok_or_else(|| missing("Android NDK", "android/sdk/ndk"))
+    android_ndk().ok_or_else(|| missing("Android NDK", "sdk/android/sdk/ndk"))
 }
 
 pub fn adb() -> Option<PathBuf> {
@@ -365,9 +369,9 @@ pub fn adb() -> Option<PathBuf> {
 
 /// iOS 用的静态 MoltenVK。`device` 为真取真机切片，否则取模拟器切片。
 pub fn moltenvk_lib(device: bool) -> Result<PathBuf> {
-    let xcframework = vkx_home().join("tools/moltenvk/static/MoltenVK.xcframework");
+    let xcframework = vkx_home().join("sdk/vulkan/moltenvk/static/MoltenVK.xcframework");
     if !xcframework.is_dir() {
-        return Err(missing("MoltenVK", "tools/moltenvk"));
+        return Err(missing("MoltenVK", "sdk/vulkan/moltenvk"));
     }
     let slice = if device {
         "ios-arm64"
@@ -387,7 +391,7 @@ pub fn moltenvk_lib(device: bool) -> Result<PathBuf> {
 
 /// macOS 上运行游戏时要用到的 Vulkan 实现（MoltenVK 的动态库目录）。
 pub fn moltenvk_dylib_dir() -> Option<PathBuf> {
-    let dir = vkx_home().join("tools/moltenvk/dylib/macOS");
+    let dir = vkx_home().join("sdk/vulkan/moltenvk/dylib/macOS");
     dir.join("libMoltenVK.dylib").is_file().then_some(dir)
 }
 

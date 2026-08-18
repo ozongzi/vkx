@@ -128,6 +128,13 @@ pub fn cmake(project: &Project) -> Result<()> {
 
     let mut s = String::new();
     let name = &project.name;
+    // 这个文件是每次构建重新生成的，写绝对路径不会跟着仓库跑到别人机器上。
+    // 反斜杠在 CMake 字符串里是转义符，Windows 上必须换成正斜杠。
+    let sdk_libs = crate::fetch::sdk_dir()
+        .join("libs")
+        .display()
+        .to_string()
+        .replace('\\', "/");
     s.push_str(&format!(
         "\
 # 由 vkx {version} 从 ../vkx.toml 生成。别手改这个文件——下次构建会覆盖掉。
@@ -155,6 +162,14 @@ endif()
 list(APPEND CMAKE_MODULE_PATH \"${{CMAKE_CURRENT_SOURCE_DIR}}/cmake\")
 include(FetchContent)
 include(VkxShaders)
+
+# SDK 里那份预编译的 C 库。vkx 把路径填在这里（它知道 VKX_HOME 在哪），
+# find_package 顺着 CMAKE_PREFIX_PATH 就能找到 SDL3、FreeType、mbedTLS。
+# 只有头文件的那几个（GLM、cpp-httplib、stb）没有 config 包，直接给 include 路径。
+set(VKX_SDK_LIBS \"{sdk_libs}\" CACHE PATH \"\")
+if(EXISTS \"${{VKX_SDK_LIBS}}\")
+    list(APPEND CMAKE_PREFIX_PATH \"${{VKX_SDK_LIBS}}\")
+endif()
 
 set(VKX_SDL_TAG \"release-3.4.14\" CACHE STRING \"\")
 set(VKX_VULKAN_HEADERS_TAG \"v1.4.313\" CACHE STRING \"\")
@@ -191,22 +206,38 @@ else()
     endif()
 endif()
 
-FetchContent_Declare(VulkanHeaders
-    GIT_REPOSITORY https://github.com/KhronosGroup/Vulkan-Headers.git
-    GIT_TAG ${{VKX_VULKAN_HEADERS_TAG}}
-    GIT_SHALLOW TRUE)
-FetchContent_MakeAvailable(VulkanHeaders)
+# SDK 里带了，就不用出网。VulkanHeaders 的 config 装在 share/cmake 下，
+# find_package 顺着 CMAKE_PREFIX_PATH 找得到。
+find_package(VulkanHeaders QUIET CONFIG)
+if(NOT VulkanHeaders_FOUND)
+    message(STATUS \"vkx: SDK 里没有 Vulkan-Headers，从源码取\")
+    FetchContent_Declare(VulkanHeaders
+        GIT_REPOSITORY https://github.com/KhronosGroup/Vulkan-Headers.git
+        GIT_TAG ${{VKX_VULKAN_HEADERS_TAG}}
+        GIT_SHALLOW TRUE)
+    FetchContent_MakeAvailable(VulkanHeaders)
+endif()
 
 # volk 在运行期加载 Vulkan 函数指针，链接期就不必依赖 loader。
 # iOS 不需要它：那边静态链接 MoltenVK，函数本来就在二进制里。
+#
+# SDK 装的那份导出的是 volk::volk，FetchContent 出来的是裸的 volk，
+# 名字不一样，所以用一个变量把差异收在这里。
 if(NOT IOS)
-    FetchContent_Declare(volk
-        GIT_REPOSITORY https://github.com/zeux/volk.git
-        GIT_TAG ${{VKX_VOLK_TAG}}
-        GIT_SHALLOW TRUE)
-    set(VOLK_PULL_IN_VULKAN OFF CACHE BOOL \"\" FORCE)
-    FetchContent_MakeAvailable(volk)
-    target_link_libraries(volk PUBLIC Vulkan::Headers)
+    find_package(volk QUIET CONFIG)
+    if(volk_FOUND)
+        set(VKX_VOLK volk::volk)
+    else()
+        message(STATUS \"vkx: SDK 里没有 volk，从源码取\")
+        FetchContent_Declare(volk
+            GIT_REPOSITORY https://github.com/zeux/volk.git
+            GIT_TAG ${{VKX_VOLK_TAG}}
+            GIT_SHALLOW TRUE)
+        set(VOLK_PULL_IN_VULKAN OFF CACHE BOOL \"\" FORCE)
+        FetchContent_MakeAvailable(volk)
+        target_link_libraries(volk PUBLIC Vulkan::Headers)
+        set(VKX_VOLK volk)
+    endif()
 endif()
 
 # ---------------------------------------------------------------------------
@@ -236,6 +267,11 @@ endif()
 # 头文件按 \"gpu/gpu.h\" 这样从 src/ 起写，一眼看得出属于哪一层。
 target_include_directories(${{VKX_TARGET}} PRIVATE \"${{VKX_ROOT}}/src\")
 
+# 只有头文件的库：GLM、cpp-httplib、stb 都摊在 SDK 的 include/ 下。
+if(EXISTS \"${{VKX_SDK_LIBS}}/include\")
+    target_include_directories(${{VKX_TARGET}} PRIVATE \"${{VKX_SDK_LIBS}}/include\")
+endif()
+
 target_link_libraries(${{VKX_TARGET}} PRIVATE SDL3::SDL3)
 # VKX_DEBUG 只在 Debug 配置下定义，用来开关校验层。
 target_compile_definitions(${{VKX_TARGET}} PRIVATE $<$<CONFIG:Debug>:VKX_DEBUG=1>)
@@ -247,7 +283,7 @@ if(IOS)
     target_compile_definitions(${{VKX_TARGET}} PRIVATE VKX_STATIC_VULKAN=1)
 else()
     # VK_NO_PROTOTYPES 去掉头文件里的声明，改由 volk 提供同名函数指针。
-    target_link_libraries(${{VKX_TARGET}} PRIVATE volk)
+    target_link_libraries(${{VKX_TARGET}} PRIVATE ${{VKX_VOLK}})
     target_compile_definitions(${{VKX_TARGET}} PRIVATE VK_NO_PROTOTYPES)
 endif()
 
