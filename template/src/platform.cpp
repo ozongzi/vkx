@@ -50,18 +50,36 @@ bool Application::init_platform()
 #endif
 
     // SDL_WINDOW_VULKAN         让 SDL 建一个能接 Vulkan 表面的窗口
-    // SDL_WINDOW_RESIZABLE      允许拖动边框改大小（交换链会跟着重建）
+    // SDL_WINDOW_FULLSCREEN     全屏。画布尺寸由桌面决定，工程里不写死任何分辨率
+    // SDL_WINDOW_RESIZABLE      退出全屏后允许拖动边框改大小（交换链会跟着重建）
     // SDL_WINDOW_HIGH_PIXEL_DENSITY  在 Retina 屏上拿到真实像素数的画布，
     //                           而不是被系统放大的模糊图像
-    // 单独拎出来，是为了让这一行的长度不受工程名影响：工程名是模版占位符，
-    // 长短不定，写在一起的话 clang-format 会按名字长度选择不同的折行方式。
-    const SDL_WindowFlags flags =
-        SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
-    window = SDL_CreateWindow("{{PROJECT_NAME}}", 1280, 720, flags);
+    //
+    // 标志单独拎出来，是为了让创建窗口那一行的长度不受工程名影响：工程名是模版
+    // 占位符，长短不定，写在一起的话 clang-format 会按名字长度选择不同的折行方式。
+    const SDL_WindowFlags flags = SDL_WINDOW_VULKAN | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_RESIZABLE |
+                                  SDL_WINDOW_HIGH_PIXEL_DENSITY;
+
+    // 这里的宽高是「退出全屏后恢复成多大」，问桌面拿，不写死数字。
+    //
+    // 它的单位是逻辑点，不是像素：打开 HIGH_PIXEL_DENSITY 之后，画布的像素数在
+    // Retina 屏上是这个数的两倍。画布到底多少像素，由 create_swapchain() 打印出来
+    // ——程序里任何要按像素排版的地方，都该从那个尺寸读，而不是假设一个分辨率。
+    const SDL_DisplayMode* mode = SDL_GetDesktopDisplayMode(SDL_GetPrimaryDisplay());
+    if (mode == nullptr) {
+        report_error("SDL_GetDesktopDisplayMode 失败: %s", SDL_GetError());
+        return false;
+    }
+    window = SDL_CreateWindow("{{PROJECT_NAME}}", mode->w, mode->h, flags);
     if (window == nullptr) {
         report_error("SDL_CreateWindow 失败: %s", SDL_GetError());
         return false;
     }
+
+    // 进全屏在 macOS 上是异步的：窗口先按上面那个尺寸建出来，半秒到一秒之后系统
+    // 才真的切过去。不等它，create_swapchain() 拿到的是中途的尺寸，交换链得白
+    // 重建好几次，画面也会闪一下。SDL_SyncWindow 阻塞到窗口状态落定为止。
+    SDL_SyncWindow(window);
 
     return true;
 }

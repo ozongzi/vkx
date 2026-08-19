@@ -128,6 +128,19 @@ bool Application::create_swapchain()
     info.clipped = VK_TRUE;                                   // 被遮住的像素可以不画
 
     VKX_CHECK(vkCreateSwapchainKHR(device, &info, nullptr, &swapchain));
+    // 画布到底多少像素，只有这里知道，所以在这里说出来。工程里没有任何写死的
+    // 分辨率：窗口尺寸是逻辑点，画布是物理像素，Retina 屏上两者差一个密度系数。
+    // 要按像素排版就读 swapchain_extent，别拿窗口尺寸当像素用。
+    //
+    // 只在尺寸真的变了时才打印。进全屏、拖边框都会连着重建好几次交换链，
+    // 每次都打一行的话，日志里全是同一个数字。
+    if (extent.width != swapchain_extent.width || extent.height != swapchain_extent.height) {
+        int point_width = 0;
+        int point_height = 0;
+        SDL_GetWindowSize(window, &point_width, &point_height);
+        SDL_Log("vkx: 画布 %ux%u 像素（窗口 %dx%d 点，密度 %.2g）", extent.width, extent.height,
+                point_width, point_height, static_cast<double>(SDL_GetWindowPixelDensity(window)));
+    }
     swapchain_extent = extent;
 
     // 图像由交换链持有，这里只是把句柄取出来，不需要自己销毁。
