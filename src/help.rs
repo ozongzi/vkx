@@ -32,7 +32,7 @@ const TOPICS: &[(&str, &str, &str)] = &[
         "工具链装在哪、怎么清",
         "全部组件都在 ~/.vkx 下：\n\n\
          bin/      vkx 自己\n\
-         sdk/      按需下载的组件（工具、库、Vulkan、Android）\n\
+         sdk/      从安装包装进来的组件（工具、库、Vulkan、Android）\n\
          cache/    下载缓存，可随时删\n\n\
          删掉整个 ~/.vkx 就等于卸载干净。",
     ),
@@ -45,21 +45,25 @@ const TOPICS: &[(&str, &str, &str)] = &[
          4. 真机：在 vkx.toml 的 [ios] 里填 development_team，然后 vkx dist --target ios-device",
     ),
     (
-        "fetch",
-        "工具链是怎么下载的",
-        "每个平台一个 SDK 包，里面按组件分段：toolchain / libs / vulkan / android。\n\n\
-         vkx fetch                取桌面构建需要的那几段\n\
-         vkx fetch --component android   出安卓包时才取那几 GB\n\
-         vkx fetch\n\n\
-         用 HTTP Range 只下需要的字节，所以不想做安卓的人不必等那几 GB。\n\
-         站点必须支持 Range；不支持时 vkx 会当场说清而不是默默下整包。",
+        "install",
+        "工具链是怎么装的",
+        "vkx 不从网上取任何东西。它要的一切——cmake、ninja、slangc、Vulkan、\n\
+         JDK、Gradle、Android SDK 和 NDK——都在离线安装包里，一个开发平台一个：\n\n\
+         vkx install vkx-macos-arm64.zip\n\
+         vkx install vkx-linux-x64.zip\n\
+         vkx install vkx-windows-x64.zip\n\n\
+         装到 ~/.vkx（VKX_HOME 可以改）。只补缺的：已经装好并且校验通过的直接跳过，\n\
+         所以重复执行是安全的，中断之后再跑一次就接着装。\n\n\
+         每一样在装之前都按 blake3 校验，对不上就不装、不留半成品。\n\
+         `vkx doctor` 列出哪些装了哪些没装。想全部重装用 --force。",
     ),
     (
-        "mirror",
-        "换下载站点、自建镜像",
-        "默认站点写在 vkx 里。临时换用环境变量：\n\n\
-         VKX_MIRROR=https://example.com/vkx vkx fetch\n\n\
-         自建只需要一个支持 HTTP Range 的静态文件服务。",
+        "version",
+        "为什么依赖不追版本",
+        "一个 vkx 版本对应一套确定的依赖，版本号写死在二进制里，出 CVE 也不动。\n\n\
+         好处是构建可复现：同一个 vkx 在任何机器、任何时候装出来的都是同一套东西，\n\
+         不会因为上游发了新 patch 而变。想换依赖就换 vkx——没有别的路径能改动\n\
+         你机器上装的是什么。",
     ),
 ];
 

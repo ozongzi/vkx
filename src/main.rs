@@ -3,16 +3,16 @@ mod deps;
 mod dist;
 mod doctor;
 mod error;
-mod fetch;
 mod fmt;
 mod fs;
 mod generate;
 mod help;
+mod install;
 mod mobile;
 mod project;
 mod prompt;
 mod scaffold;
-mod selfupdate;
+mod sdk;
 mod signing;
 mod toolchain;
 mod ui;
@@ -88,11 +88,13 @@ enum Command {
     },
     /// 删除构建产物
     Clean,
-    /// 从镜像取 SDK 组件（用 HTTP Range，只下那一段的字节）
-    Fetch {
-        /// 只取这一个组件；不给就把 SDK 全部取回来
+    /// 从离线安装包补齐 SDK：vkx install vkx-<平台>.zip
+    Install {
+        /// 安装包路径
+        bundle: std::path::PathBuf,
+        /// 已经装好的也重装一遍
         #[arg(long)]
-        component: Option<String>,
+        force: bool,
     },
     /// 检查环境，报告缺什么、怎么补
     Doctor,
@@ -116,18 +118,7 @@ enum Command {
     },
 }
 
-#[derive(Subcommand)]
-enum SelfCommand {
-    /// 从镜像更新 vkx 自己
-    Update {
-        /// 只看有没有新版，不真的更新
-        #[arg(long)]
-        check: bool,
-    },
-}
-
 fn main() -> ExitCode {
-    selfupdate::sweep_old();
     let cli = Cli::parse();
     match dispatch(cli) {
         Ok(code) => ExitCode::from(code),
@@ -174,6 +165,7 @@ fn dispatch(cli: Cli) -> Result<u8> {
         Command::Build { release, target } => {
             let project = current_project()?;
             let profile = profile(release);
+            gate(target)?;
             let artifact = match target {
                 Target::Desktop => builder::build(&project, profile)?,
                 Target::Android => mobile::build_android(&project, profile)?,
@@ -191,6 +183,7 @@ fn dispatch(cli: Cli) -> Result<u8> {
         } => {
             let project = current_project()?;
             let profile = profile(release);
+            gate(target)?;
             let code = match target {
                 Target::Desktop => builder::run(&project, profile, &args)?,
                 Target::Android => mobile::run_android(&project, profile)?,
@@ -201,6 +194,7 @@ fn dispatch(cli: Cli) -> Result<u8> {
         }
         Command::Dist { target } => {
             let project = current_project()?;
+            gate(target)?;
             let outputs = match target {
                 Target::Desktop => vec![dist::dist_desktop(&project)?],
                 Target::Android => dist::dist_android(&project)?,
@@ -215,12 +209,19 @@ fn dispatch(cli: Cli) -> Result<u8> {
             Ok(0)
         }
         Command::Fmt { check } => {
+            install::require_fmt()?;
             let project = current_project()?;
             fmt::run(&project, check)
         }
-        Command::Fetch { component } => fetch::run(component.as_deref()),
+        Command::Install { bundle, force } => {
+            install::install_from(&bundle, force)?;
+            Ok(0)
+        }
         Command::Doctor => doctor::run(),
-        Command::Selfcmd(SelfCommand::Update { check }) => selfupdate::run(check),
+        Command::Selfcmd(SelfCommand::Uninstall { yes }) => {
+            install::uninstall(yes)?;
+            Ok(0)
+        }
         Command::Add { name } => {
             let project = current_project()?;
             deps::add(&project, &name)
@@ -301,6 +302,16 @@ fn require_interactive(what: &str) -> Result<()> {
     ))
 }
 
+#[derive(Subcommand)]
+enum SelfCommand {
+    /// 删掉 ~/.vkx，把 vkx 装的东西全部卸干净
+    Uninstall {
+        /// 不问直接删
+        #[arg(long)]
+        yes: bool,
+    },
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum Target {
     /// 本机桌面（Windows / macOS / Linux）
@@ -311,6 +322,15 @@ enum Target {
     Ios,
     /// iOS 真机（需要开发者证书）
     IosDevice,
+}
+
+/// 动手之前先看这个目标要的东西齐不齐，缺就直接报缺哪些。
+fn gate(target: Target) -> Result<()> {
+    match target {
+        Target::Desktop => install::require_desktop(),
+        Target::Android => install::require_android(),
+        Target::Ios | Target::IosDevice => install::require_ios(),
+    }
 }
 
 fn current_project() -> Result<Project> {

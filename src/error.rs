@@ -56,9 +56,9 @@ impl Code {
             }
             Code::MissingComponent => {
                 "工具链的某个组件不在 ~/.vkx 里。\n\n\
-                 vkx 按需下载，所以第一次用到某个平台时会去取。\n\
-                 网络不通时可以先 `vkx fetch` 在有网的地方备好，\n\
-                 或者用 VKX_MIRROR 指向别的站点。"
+                 vkx 不从网上取东西，组件全在离线安装包里。用\n\
+                 `vkx install vkx-<平台>.zip` 补齐，它只装缺的那几样。\n\
+                 `vkx doctor` 能看到哪些装了、哪些没装。"
             }
             Code::CommandFailed => {
                 "vkx 调用的外部命令（cmake、ninja、slangc、gradle、xcodebuild 之一）\n\
@@ -68,13 +68,13 @@ impl Code {
             }
             Code::Io => {
                 "读写文件失败。常见原因是权限不足、路径不存在、或者磁盘满了。\n\n\
-                 `vkx clean --cache` 可以清掉下载缓存腾出空间。"
+                 磁盘满了的话，~/.vkx 下最占地方的是 android/sdk/ndk（约 2.8 GB）。"
             }
             Code::Environment => {
                 "当前环境不满足这条命令的要求。有两样东西 vkx 无法代为安装：\n\n\
                  - macOS 的 Xcode 和命令行工具（Apple 不允许第三方再分发）\n\
                  - 显卡驱动里的 Vulkan ICD（由驱动提供）\n\n\
-                 其余组件都可以 `vkx fetch` 取回来。"
+                 其余组件都在离线安装包里，`vkx install` 补齐。"
             }
             Code::Usage => {
                 "命令的用法不对。`vkx help <命令>` 有该命令的完整说明。\n\n\

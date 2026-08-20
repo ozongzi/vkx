@@ -52,7 +52,33 @@ pub fn report(error: &Error) {
     eprintln!();
 }
 
+/// 单行覆盖式进度条，带一句说明这是在干什么。
+/// 不是终端时什么都不打，避免把日志刷满。
+pub fn progress_labeled(label: &str, done: u64, total: u64) {
+    use std::io::{IsTerminal, Write};
+    if !std::io::stderr().is_terminal() {
+        return;
+    }
+    let ratio = if total == 0 {
+        0.0
+    } else {
+        (done as f64 / total as f64).clamp(0.0, 1.0)
+    };
+    let width = 24;
+    let filled = (ratio * width as f64).round() as usize;
+    let bar: String = "█".repeat(filled) + &"░".repeat(width - filled);
+    let _ = write!(
+        std::io::stderr(),
+        "\r    {label} {bar} {:>3.0}%  {:.0}/{:.0} MB   ",
+        ratio * 100.0,
+        done as f64 / 1_048_576.0,
+        total as f64 / 1_048_576.0
+    );
+    let _ = std::io::stderr().flush();
+}
+
 /// 单行覆盖式进度条。不是终端时什么都不打，避免把日志刷满。
+#[allow(dead_code)]
 pub fn progress(done: u64, total: u64) {
     use std::io::{IsTerminal, Write};
     if !std::io::stderr().is_terminal() {

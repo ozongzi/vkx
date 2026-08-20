@@ -130,7 +130,7 @@ pub fn cmake(project: &Project) -> Result<()> {
     let name = &project.name;
     // 这个文件是每次构建重新生成的，写绝对路径不会跟着仓库跑到别人机器上。
     // 反斜杠在 CMake 字符串里是转义符，Windows 上必须换成正斜杠。
-    let sdk_libs = crate::fetch::sdk_dir()
+    let sdk_libs = crate::install::sdk_dir()
         .join("libs")
         .display()
         .to_string()

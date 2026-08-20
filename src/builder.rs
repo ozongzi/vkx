@@ -107,22 +107,7 @@ fn check_cxx_toolchain() -> Result<()> {
 }
 
 /// 配置 + 编译桌面版，返回可执行文件路径。
-/// 缺哪个 SDK 组件就取哪个。
-///
-/// 安装脚本只装 vkx 本身，组件是第一次构建时才下的——install.sh 结尾那句
-/// 「第一次 vkx run 会下载编译需要的工具链」说的就是这里。以前这里不取，
-/// 直接报「找不到 cmake，执行 vkx fetch」，多让人跑一条命令。
-fn ensure_sdk(project: &Project) -> Result<()> {
-    let mut needed = vec!["toolchain", "libs", "vulkan"];
-    // 打开了要从源码编的库，就还要 sources。
-    if !project.libs.is_empty() {
-        needed.push("sources");
-    }
-    crate::fetch::ensure(&needed)
-}
-
 pub fn build(project: &Project, profile: Profile) -> Result<PathBuf> {
-    ensure_sdk(project)?;
     check_cxx_toolchain()?;
     let cmake = toolchain::require_cmake()?;
     let slangc = toolchain::require_slangc()?;

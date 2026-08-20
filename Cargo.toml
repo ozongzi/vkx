@@ -1,16 +1,21 @@
 [package]
 name = "vkx"
-version = "0.1.15"
+version = "0.2.0"
 edition = "2024"
 description = "Vulkan + SDL3 跨平台游戏工程脚手架"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
+blake3 = "1"
 flate2 = { version = "1.1.9", default-features = false, features = ["rust_backend"] }
 include_dir = "0.7"
 ruzstd = "0.9.0"
 sha2 = "0.11.0"
 tar = "0.4.46"
+# 上游的包一半是 zip：NDK、cmdline-tools、build-tools、platform、platform-tools、
+# gradle、Windows 的 JDK，以及全部 PyPI 轮子（.whl 就是 zip）。以前不需要它，
+# 是因为我们把上游包全部重打成了 tar.gz；现在直接认上游的包，就绕不开了。
+zip = { version = "2", default-features = false, features = ["deflate"] }
 # HTTP：系统证书优先（platform-verifier 走操作系统的验证 API，是系统调用不是外部
 # 二进制），拿不到时回退到内置的 webpki-roots。
 ureq = { version = "3.4.0", default-features = false, features = [
