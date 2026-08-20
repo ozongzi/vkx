@@ -25,6 +25,10 @@ impl Project {
                 "确认这个目录存在且有读权限",
             )
         })?;
+        // Windows 上 canonicalize() 返回的是 `\\?\D:\x` 这种扩展长度路径。工程根
+        // 目录会一路传进 CMake 的 -S/-B，而 CMake 不认这个前缀，会把它当成网络
+        // 路径。这里就地摘掉，后面所有派生路径都干净。
+        let start = crate::toolchain::plain_path(&start);
 
         for directory in start.ancestors() {
             let manifest = directory.join("vkx.toml");

@@ -84,7 +84,7 @@ pub fn run(project: &Project, check: bool) -> Result<u8> {
                     Error::new(
                         Code::MissingComponent,
                         format!("无法运行 clang-format: {e}"),
-                        "运行 `vkx fetch` 取回工具链",
+                        "用 `vkx install vkx-<平台>.zip` 补齐工具链",
                     )
                 })?;
             if !status.success() {

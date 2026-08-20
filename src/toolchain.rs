@@ -1,7 +1,7 @@
 //! 工具链探测。
 //!
-//! 安装脚本只装 vkx 本身，其余全部来自 `vkx fetch` 取下来的 SDK 包。
-//! 这里只负责找到它们，找不到就报错，让用户 `vkx fetch`。
+//! 安装包里除了 vkx 本身，还带着全套 SDK 组件。这里只负责在 ~/.vkx 下找到
+//! 它们，找不到就报错，让用户 `vkx doctor` 看缺什么、`vkx install` 补齐。
 //!
 //! ~/.vkx 的布局。sdk/ 下面一个组件一个目录，和清单里的组件名一一对应——
 //! fetch 就是按这个对应关系解包的，所以这里的路径必须跟着组件走：
@@ -20,7 +20,7 @@ use crate::error::{Code, Error, Result};
 
 /// 用户主目录。找不到就退回当前目录——但会先喊一声。
 ///
-/// 静默退回当前目录是个很不好查的坑：`vkx fetch` 会把几百 MB 装到你随手所在
+/// 静默退回当前目录是个很不好查的坑：`vkx install` 会把几百 MB 装到你随手所在
 /// 的那个目录里，而且报告成功，直到后面某一步说「找不到 cmake」才暴露。
 pub fn home_dir() -> PathBuf {
     let key = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
@@ -34,6 +34,60 @@ pub fn home_dir() -> PathBuf {
             PathBuf::from(".")
         }
     }
+}
+
+/// 把一个路径变成 CMake 能安全吃下的字符串。只有 Windows 上才真的动手。
+///
+/// 两件事：
+///
+/// 一是去掉 `\\?\` 前缀。`Path::canonicalize()` 在 Windows 上返回的一律是这种
+/// 「扩展长度路径」，而 CMake 不认——它把分隔符统一成正斜杠之后得到 `//?/D:/x`，
+/// 会当成网络路径去解析，编译器探测和生成的 CMakeCCompiler.cmake 就全是坏的。
+///
+/// 二是反斜杠换正斜杠。CMake 的字符串里反斜杠是转义符，`C:\Users\...` 里的
+/// `\U` 是非法转义，include 生成的 .cmake 文件时会直接报语法错误。正斜杠 CMake
+/// 在 Windows 上照样认，而且没有这个歧义。
+pub fn cmake_path(path: &Path) -> String {
+    let text = path.display().to_string();
+    if cfg!(windows) {
+        windows_cmake_text(&text)
+    } else {
+        // Unix 的文件名里反斜杠是合法字符，不能乱换。
+        text
+    }
+}
+
+/// 摘掉 Windows 的 `\\?\` 扩展长度前缀，别的原样返回。
+///
+/// `Path::canonicalize()` 在 Windows 上一律返回这种前缀。它对 Win32 API 有用
+/// （能突破 260 字符上限），但 CMake、ninja 这类工具多半不认，`D:\client` 这种
+/// 短路径又根本用不着它。
+pub fn plain_path(path: &Path) -> PathBuf {
+    if !cfg!(windows) {
+        return path.to_path_buf();
+    }
+    PathBuf::from(strip_verbatim(&path.display().to_string()))
+}
+
+// 下面两个是纯字符串函数，不看当前平台。这样 Windows 的路径处理在 mac 和 Linux
+// 上也能被 `cargo test` 覆盖到——这条路径的真机验证要经过 CI 出二进制、再在
+// Windows 上手动换掉 ~/.vkx/bin/vkx，一轮很贵，靠单测把它钉住划算得多。
+
+/// `\\?\D:\x` -> `D:\x`，`\\?\UNC\server\share` -> `\\server\share`。
+fn strip_verbatim(text: &str) -> String {
+    // UNC 那种要还原成 \\server\share，直接砍前缀会砍出个半截路径。
+    match text.strip_prefix(r"\\?\UNC\") {
+        Some(rest) => format!(r"\\{rest}"),
+        None => match text.strip_prefix(r"\\?\") {
+            Some(rest) => rest.to_string(),
+            None => text.to_string(),
+        },
+    }
+}
+
+/// 摘前缀 + 反斜杠换正斜杠。
+fn windows_cmake_text(text: &str) -> String {
+    strip_verbatim(text).replace('\\', "/")
 }
 
 /// 安装脚本铺好的环境根目录。
@@ -78,21 +132,24 @@ pub fn which(program: &str) -> Option<PathBuf> {
 
 /// 工具从哪儿来，分三类。
 ///
-/// # 只用我们自己的（[`managed_only`]）
+/// # 只用我们自己装的（[`managed_only`]）
 ///
-/// slangc、clang-format 这类**输出必须逐字节一致**的工具。教程里每一步的 diff
-/// 和「校验层零输出」都建立在所有人拿到同样的产物上；读者机器上那个版本不同的
-/// clang-format 会把 `vkx fmt` 的结果改掉，diff 就对不上了。
+/// cmake、ninja、slangc、clang-format、llvm-mingw、JDK、Gradle、Android SDK/NDK
+/// ——凡是安装包里带的，一律只认 `~/.vkx` 下的那一份，*不看 PATH，也不看
+/// VULKAN_SDK / JAVA_HOME / ANDROID_HOME 这些环境变量*。
 ///
-/// # 系统的够用就用系统的（[`system_or_managed`]）
+/// 理由是可复现。教程里每一步的 diff、「校验层零输出」、`vkx fmt` 的结果，都建立
+/// 在所有人拿到同一套工具上。一旦允许回退到系统那份，读者的构建就取决于他机器上
+/// 恰好装了什么——PATH 上某个别的软件捎带的 cmake 就能让构建走上另一条路，而且
+/// 出了问题极难判断：报错里根本看不出用的是哪一份。
 ///
-/// cmake、ninja 这类只要版本够新、行为就一致的工具。用系统已有的能省一次下载。
-/// 版本太旧则回退到我们装的那份。
+/// 少下一份的那点磁盘，换不来这个不确定性。装不全就报错让人去补齐，
+/// 比默默用一份来路不明的强。
 ///
 /// # 只能用系统的
 ///
 /// xcodebuild、xcrun、codesign、hdiutil——Apple 的东西不允许第三方再分发，
-/// 只能指望机器上装了 Xcode。这是文档里写明的两个例外之一。
+/// 只能指望机器上装了 Xcode。这是唯一的例外，也是 [`which`] 仅剩的用处。
 ///
 /// # 永远不用的
 ///
@@ -103,35 +160,10 @@ fn managed_only(relative: &str) -> Option<PathBuf> {
     managed.is_file().then_some(managed)
 }
 
-/// 系统上那份够新就用它，否则用我们装的。`minimum` 是「主版本.次版本」。
-fn system_or_managed(relative: &str, program: &str, minimum: (u32, u32)) -> Option<PathBuf> {
-    if let Some(found) = which(program)
-        && version_at_least(&found, minimum)
-    {
-        return Some(found);
-    }
+/// 同上，只不过找的是目录。
+fn managed_dir(relative: &str) -> Option<PathBuf> {
     let managed = vkx_home().join(relative);
-    managed.is_file().then_some(managed)
-}
-
-/// 跑 `<程序> --version`，把第一个 `x.y` 抠出来比一下。认不出版本就当不满足。
-fn version_at_least(program: &Path, minimum: (u32, u32)) -> bool {
-    let Ok(output) = std::process::Command::new(program)
-        .arg("--version")
-        .output()
-    else {
-        return false;
-    };
-    let text = String::from_utf8_lossy(&output.stdout);
-    let Some(found) = text.split_whitespace().find_map(|word| {
-        let mut parts = word.split('.');
-        let major: u32 = parts.next()?.parse().ok()?;
-        let minor: u32 = parts.next().unwrap_or("0").parse().ok()?;
-        Some((major, minor))
-    }) else {
-        return false;
-    };
-    found >= minimum
+    managed.is_dir().then_some(managed)
 }
 
 /// clang-format。只用 vkx 装的那份——版本不同格式化结果就不同，
@@ -147,7 +179,7 @@ fn missing(tool: &str, expected: &str) -> Error {
         format!("找不到 {tool}"),
         format!("它应该在 {}", vkx_home().join(expected).display()),
     )
-    .hint("执行 `vkx fetch` 把 SDK 组件补齐")
+    .hint("`vkx doctor` 看缺了哪些，再用 `vkx install vkx-<平台>.zip` 补齐")
 }
 
 // ---------------------------------------------------------------------------
@@ -196,11 +228,7 @@ fn render(command: &Command) -> String {
 // ---------------------------------------------------------------------------
 
 pub fn find_cmake() -> Option<PathBuf> {
-    system_or_managed(
-        &format!("sdk/toolchain/cmake/bin/{}", exe("cmake")),
-        "cmake",
-        (3, 24),
-    )
+    managed_only(&format!("sdk/toolchain/cmake/bin/{}", exe("cmake")))
 }
 
 pub fn require_cmake() -> Result<PathBuf> {
@@ -208,11 +236,7 @@ pub fn require_cmake() -> Result<PathBuf> {
 }
 
 pub fn find_ninja() -> Option<PathBuf> {
-    system_or_managed(
-        &format!("sdk/toolchain/ninja/{}", exe("ninja")),
-        "ninja",
-        (1, 10),
-    )
+    managed_only(&format!("sdk/toolchain/ninja/{}", exe("ninja")))
 }
 
 pub fn require_ninja() -> Result<PathBuf> {
@@ -220,20 +244,9 @@ pub fn require_ninja() -> Result<PathBuf> {
 }
 
 pub fn find_slangc() -> Option<PathBuf> {
-    let managed = vkx_home().join(format!("sdk/toolchain/slang/bin/{}", exe("slangc")));
-    if managed.is_file() {
-        return Some(managed);
-    }
-    // 装了 Vulkan SDK 的机器上也有一份。
-    if let Some(sdk) = std::env::var_os("VULKAN_SDK") {
-        for bin in ["bin", "Bin"] {
-            let candidate = PathBuf::from(&sdk).join(bin).join(exe("slangc"));
-            if candidate.is_file() {
-                return Some(candidate);
-            }
-        }
-    }
-    which("slangc")
+    // 装了 Vulkan SDK 的机器上也有一份 slangc，但版本不一定对得上：换个版本
+    // 产出的 SPIR-V 就可能不一样，不认。
+    managed_only(&format!("sdk/toolchain/slang/bin/{}", exe("slangc")))
 }
 
 pub fn require_slangc() -> Result<PathBuf> {
@@ -272,18 +285,14 @@ pub fn sdl_android_aar() -> Result<PathBuf> {
 // ---------------------------------------------------------------------------
 
 pub fn jdk() -> Option<PathBuf> {
+    // 不看 JAVA_HOME，也不看 PATH 上的 java：Gradle 对 JDK 版本很挑，
+    // 机器上是几就用几的话，安卓构建会随人而异。
     let managed = vkx_home().join("sdk/android/jdk");
-    if managed.join("bin").join(exe("java")).is_file() {
-        return Some(managed);
-    }
-    if let Some(java_home) = std::env::var_os("JAVA_HOME") {
-        let path = PathBuf::from(java_home);
-        if path.join("bin").join(exe("java")).is_file() {
-            return Some(path);
-        }
-    }
-    // 系统 PATH 上的 java，往上两级就是 JAVA_HOME。
-    which("java")?.parent()?.parent().map(PathBuf::from)
+    managed
+        .join("bin")
+        .join(exe("java"))
+        .is_file()
+        .then_some(managed)
 }
 
 pub fn require_jdk() -> Result<PathBuf> {
@@ -305,10 +314,7 @@ pub fn find_gradle() -> Option<PathBuf> {
         "gradle"
     };
     let managed = vkx_home().join("sdk/android/gradle/bin").join(name);
-    if managed.is_file() {
-        return Some(managed);
-    }
-    which("gradle")
+    managed.is_file().then_some(managed)
 }
 
 pub fn require_gradle() -> Result<PathBuf> {
@@ -316,26 +322,9 @@ pub fn require_gradle() -> Result<PathBuf> {
 }
 
 pub fn android_sdk() -> Option<PathBuf> {
-    let managed = vkx_home().join("sdk/android/sdk");
-    if managed.is_dir() {
-        return Some(managed);
-    }
-    for key in ["ANDROID_HOME", "ANDROID_SDK_ROOT"] {
-        if let Some(value) = std::env::var_os(key) {
-            let path = PathBuf::from(value);
-            if path.is_dir() {
-                return Some(path);
-            }
-        }
-    }
-    let default = if cfg!(target_os = "macos") {
-        home_dir().join("Library/Android/sdk")
-    } else if cfg!(windows) {
-        home_dir().join("AppData/Local/Android/Sdk")
-    } else {
-        home_dir().join("Android/Sdk")
-    };
-    default.is_dir().then_some(default)
+    // 不看 ANDROID_HOME / ANDROID_SDK_ROOT，也不去猜 ~/Library/Android/sdk 那些
+    // 默认位置：Android Studio 装的那套里 NDK、build-tools 版本都不确定。
+    managed_dir("sdk/android/sdk")
 }
 
 pub fn require_android_sdk() -> Result<PathBuf> {
@@ -344,12 +333,6 @@ pub fn require_android_sdk() -> Result<PathBuf> {
 
 /// SDK 下可能并存多个 NDK 版本，取版本号最大的。
 pub fn android_ndk() -> Option<PathBuf> {
-    if let Some(value) = std::env::var_os("ANDROID_NDK_HOME") {
-        let path = PathBuf::from(value);
-        if path.is_dir() {
-            return Some(path);
-        }
-    }
     let ndk_root = android_sdk()?.join("ndk");
     let mut versions: Vec<PathBuf> = crate::fs::read_dir(&ndk_root)
         .ok()?
@@ -365,13 +348,8 @@ pub fn require_android_ndk() -> Result<PathBuf> {
 }
 
 pub fn adb() -> Option<PathBuf> {
-    if let Some(sdk) = android_sdk() {
-        let candidate = sdk.join("platform-tools").join(exe("adb"));
-        if candidate.is_file() {
-            return Some(candidate);
-        }
-    }
-    which("adb")
+    let candidate = android_sdk()?.join("platform-tools").join(exe("adb"));
+    candidate.is_file().then_some(candidate)
 }
 
 // ---------------------------------------------------------------------------
@@ -475,3 +453,35 @@ pub fn xcode_developer_dir() -> Option<String> {
     let dir = capture(&tool, &["-p"])?;
     Path::new(&dir).is_dir().then_some(dir)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{strip_verbatim, windows_cmake_text};
+
+    #[test]
+    fn 扩展长度前缀被摘掉() {
+        assert_eq!(strip_verbatim(r"\\?\D:\client\target"), r"D:\client\target");
+        // UNC 要还原成 \\server\share，不能砍成 server\share
+        assert_eq!(strip_verbatim(r"\\?\UNC\nas\share\x"), r"\\nas\share\x");
+        // 没有前缀的原样返回
+        assert_eq!(strip_verbatim(r"D:\client"), r"D:\client");
+        assert_eq!(strip_verbatim("/Users/me/.vkx"), "/Users/me/.vkx");
+    }
+
+    #[test]
+    fn 交给_cmake_的路径没有反斜杠() {
+        // -S / -B：带前缀的话 CMake 会看到 //?/D:/... 当成网络路径
+        assert_eq!(
+            windows_cmake_text(r"\\?\D:\client\target\debug"),
+            "D:/client/target/debug"
+        );
+        // 这条就是线上炸掉的那个：\Users 的 \U 是 CMake 里的非法转义。
+        // 注意源串是斜杠混着的——PathBuf::join 拼字面量就会拼成这样。
+        assert_eq!(
+            windows_cmake_text(r"C:\Users\me\.vkx\sdk/toolchain/llvm-mingw\bin\clang.exe"),
+            "C:/Users/me/.vkx/sdk/toolchain/llvm-mingw/bin/clang.exe"
+        );
+        assert!(!windows_cmake_text(r"C:\Users\x\.vkx").contains('\\'));
+    }
+}
+

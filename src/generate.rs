@@ -129,12 +129,8 @@ pub fn cmake(project: &Project) -> Result<()> {
     let mut s = String::new();
     let name = &project.name;
     // 这个文件是每次构建重新生成的，写绝对路径不会跟着仓库跑到别人机器上。
-    // 反斜杠在 CMake 字符串里是转义符，Windows 上必须换成正斜杠。
-    let sdk_libs = crate::install::sdk_dir()
-        .join("libs")
-        .display()
-        .to_string()
-        .replace('\\', "/");
+    // 路径要过一道 cmake_path()：反斜杠在 CMake 字符串里是转义符。
+    let sdk_libs = crate::toolchain::cmake_path(&crate::install::sdk_dir().join("libs"));
     s.push_str(&format!(
         "\
 # 由 vkx {version} 从 ../vkx.toml 生成。别手改这个文件——下次构建会覆盖掉。
@@ -347,13 +343,12 @@ endif()
                     crate::error::Error::new(
                         crate::error::Code::MissingComponent,
                         format!("{} 打开了，但 SDK 里没有它的源码", lib.key),
-                        "执行 `vkx fetch --component sources` 取回来",
+                        "用 `vkx install vkx-<平台>.zip` 把 sources 组件补上",
                     )
                     .hint(&format!("或者 `vkx remove {}` 关掉它", lib.key))
                 })?
-                .join(lib.cmake_subdir)
-                .display()
-                .to_string();
+                .join(lib.cmake_subdir);
+            let dir = crate::toolchain::cmake_path(&dir);
             s.push_str(&format!(
                 "\n# {about}\nadd_subdirectory(\"{dir}\" {key} EXCLUDE_FROM_ALL)\n\
                  target_link_libraries(${{VKX_TARGET}} PRIVATE {target})\n",

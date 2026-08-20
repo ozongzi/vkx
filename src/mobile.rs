@@ -270,8 +270,8 @@ pub fn configure_ios(project: &Project, device: bool) -> Result<PathBuf> {
         .arg("-DCMAKE_OSX_ARCHITECTURES=arm64")
         // MoltenVK 的二进制是按 iOS 15 构建的，部署目标不能比它低。
         .arg("-DCMAKE_OSX_DEPLOYMENT_TARGET=15.0")
-        .arg(format!("-DVKX_SLANGC={}", slangc.display()))
-        .arg(format!("-DVKX_MOLTENVK_LIB={}", moltenvk.display()));
+        .arg(format!("-DVKX_SLANGC={}", toolchain::cmake_path(&slangc)))
+        .arg(format!("-DVKX_MOLTENVK_LIB={}", toolchain::cmake_path(&moltenvk)));
     builder::add_offline_sources(&mut configure);
 
     match project.development_team.as_deref() {

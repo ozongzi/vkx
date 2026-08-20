@@ -39,7 +39,7 @@ pub fn add_offline_sources(command: &mut Command) {
         ("volk", "FETCHCONTENT_SOURCE_DIR_VOLK"),
     ] {
         if let Some(dir) = toolchain::source_dir(name) {
-            command.arg(format!("-D{variable}={}", dir.display()));
+            command.arg(format!("-D{variable}={}", toolchain::cmake_path(&dir)));
         }
     }
 }
@@ -56,7 +56,7 @@ fn add_generator(command: &mut Command) -> Result<()> {
     command
         .arg("-G")
         .arg("Ninja")
-        .arg(format!("-DCMAKE_MAKE_PROGRAM={}", ninja.display()));
+        .arg(format!("-DCMAKE_MAKE_PROGRAM={}", toolchain::cmake_path(&ninja)));
 
     if cfg!(windows) {
         let mingw = toolchain::llvm_mingw().ok_or_else(|| {
@@ -70,11 +70,11 @@ fn add_generator(command: &mut Command) -> Result<()> {
         command
             .arg(format!(
                 "-DCMAKE_C_COMPILER={}",
-                bin.join("clang.exe").display()
+                toolchain::cmake_path(&bin.join("clang.exe"))
             ))
             .arg(format!(
                 "-DCMAKE_CXX_COMPILER={}",
-                bin.join("clang++.exe").display()
+                toolchain::cmake_path(&bin.join("clang++.exe"))
             ))
             // 静态链接运行时，产物不依赖 llvm-mingw 的 DLL。
             .arg("-DCMAKE_EXE_LINKER_FLAGS=-static");
@@ -126,7 +126,7 @@ pub fn build(project: &Project, profile: Profile) -> Result<PathBuf> {
         .arg("-B")
         .arg(&build_dir)
         .arg(format!("-DCMAKE_BUILD_TYPE={}", profile.cmake_config()))
-        .arg(format!("-DVKX_SLANGC={}", slangc.display()))
+        .arg(format!("-DVKX_SLANGC={}", toolchain::cmake_path(&slangc)))
         .arg("-DCMAKE_EXPORT_COMPILE_COMMANDS=ON");
     add_generator(&mut configure)?;
     add_offline_sources(&mut configure);
