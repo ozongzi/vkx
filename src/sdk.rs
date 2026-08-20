@@ -446,6 +446,14 @@ pub const ENTRIES: &[Entry] = &[
         origin: "",
     },
     Entry {
+        name: "llvm-mingw", host: Host::WindowsX64,
+        file: "llvm-mingw-20250910-ucrt-x86_64.zip",
+        format: Format::Zip, dest: "toolchain/llvm-mingw", pick: "",
+        blake3: "e1f027cbf0260b9ad822e8c41faeb41d80aa36751dcb71ada7dd42748c2d215e",
+        about: "Windows 上的 C++ 编译器",
+        origin: "https://github.com/mstorsjo/llvm-mingw/releases/download/20250910/llvm-mingw-20250910-ucrt-x86_64.zip",
+    },
+    Entry {
         name: "ninja", host: Host::WindowsX64,
         file: "ninja-1.13.0-py3-none-win_amd64.whl",
         format: Format::Zip, dest: "toolchain/ninja", pick: "ninja-1.13.0.data/scripts",

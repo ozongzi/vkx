@@ -62,8 +62,8 @@ fn add_generator(command: &mut Command) -> Result<()> {
         let mingw = toolchain::llvm_mingw().ok_or_else(|| {
             Error::new(
                 Code::CommandFailed,
-                "Windows 上没有 llvm-mingw",
-                "重新运行安装脚本，它会装一份 llvm-mingw",
+                "Windows 上没有 llvm-mingw（C++ 编译器）",
+                "`vkx doctor` 看一眼，再用 `vkx install vkx-windows-x64.zip` 补齐",
             )
         })?;
         let bin = mingw.join("bin");
