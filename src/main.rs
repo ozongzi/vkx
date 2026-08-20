@@ -10,6 +10,7 @@ mod help;
 mod install;
 mod mobile;
 mod project;
+mod payload;
 mod prompt;
 mod scaffold;
 mod sdk;
@@ -95,6 +96,9 @@ enum Command {
         /// 已经装好的也重装一遍
         #[arg(long)]
         force: bool,
+        /// 不要改 PATH
+        #[arg(long)]
+        no_path: bool,
     },
     /// 检查环境，报告缺什么、怎么补
     Doctor,
@@ -213,8 +217,12 @@ fn dispatch(cli: Cli) -> Result<u8> {
             let project = current_project()?;
             fmt::run(&project, check)
         }
-        Command::Install { bundle, force } => {
-            install::install_from(&bundle, force)?;
+        Command::Install {
+            bundle,
+            force,
+            no_path,
+        } => {
+            install::install_from(&bundle, force, !no_path)?;
             Ok(0)
         }
         Command::Doctor => doctor::run(),

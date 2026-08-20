@@ -40,23 +40,30 @@ jobs:
       - name: 安装 Rust
         run: rustup target add ${{ matrix.target }}
 
+      # 两个二进制：vkx 自己，和离线安装器的壳。
+      # 壳不含数据，发布之后由 payload::concat 把它和 bundle 拼成自解压包。
       - name: 编译
         run: cargo build --release --target ${{ matrix.target }}
 
-      # 裸二进制，按平台命名。install.rs 里 Host::name() 用的就是这套名字。
       - name: 改名 (unix)
         if: runner.os != 'Windows'
-        run: cp "target/${{ matrix.target }}/release/vkx" "vkx-${{ matrix.name }}"
+        run: |
+          cp "target/${{ matrix.target }}/release/vkx"   "vkx-${{ matrix.name }}"
+          cp "target/${{ matrix.target }}/release/setup" "setup-${{ matrix.name }}"
 
       - name: 改名 (windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Copy-Item "target/${{ matrix.target }}/release/vkx.exe" "vkx-${{ matrix.name }}.exe"
+        run: |
+          Copy-Item "target/${{ matrix.target }}/release/vkx.exe"   "vkx-${{ matrix.name }}.exe"
+          Copy-Item "target/${{ matrix.target }}/release/setup.exe" "setup-${{ matrix.name }}.exe"
 
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}
-          path: vkx-${{ matrix.name }}*
+          path: |
+            vkx-${{ matrix.name }}*
+            setup-${{ matrix.name }}*
 
   release:
     needs: build

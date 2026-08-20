@@ -324,18 +324,15 @@ fn search(root: &Path, pick: &str, depth: usize) -> Option<PathBuf> {
 /// `vkx install <安装包>`
 ///
 /// 只补缺的：已经装好并且戳对得上的直接跳过。`force` 则不管戳，全部重装。
-pub fn install_from(bundle: &Path, force: bool) -> Result<()> {
+pub fn install_from(bundle: &Path, force: bool, with_path: bool) -> Result<()> {
     let host = host()?;
-    let file = std::fs::File::open(bundle).context(
-        Code::Io,
-        format!("打开 {}", bundle.display()),
-        "确认路径没写错、文件下全了",
-    )?;
-    let mut zip = zip::ZipArchive::new(std::io::BufReader::new(file)).map_err(|e| {
+    // 安装包可能是普通 zip，也可能是自解压包（前面拼着安装器自己）。
+    // payload::open 两种都认——它靠文件末尾记下的偏移，不靠往回扫签名。
+    let mut zip = crate::payload::open(bundle).map_err(|e| {
         Error::new(
             Code::Usage,
-            format!("这不像一个 zip：{e}"),
-            "要的是 vkx-<平台>.zip 那种离线安装包",
+            format!("这不像一个安装包：{e}"),
+            "要的是 vkx-<平台>.zip，或者 vkx-setup-<平台> 那个自解压文件",
         )
     })?;
 
@@ -354,6 +351,9 @@ pub fn install_from(bundle: &Path, force: bool) -> Result<()> {
     ));
     if todo.is_empty() {
         ui::info("都齐了，没事可做。");
+        if with_path {
+            path_add()?;
+        }
         return Ok(());
     }
 
@@ -464,6 +464,9 @@ pub fn install_from(bundle: &Path, force: bool) -> Result<()> {
 
     if failed.is_empty() {
         ui::step(&format!("装好 {done} 个"));
+        if with_path {
+            path_add()?;
+        }
         return Ok(());
     }
     let list = failed
@@ -599,6 +602,27 @@ fn dir_size(path: &Path) -> u64 {
         .sum()
 }
 
+
+/// 给一个文件排上「下次开机时删掉」。
+///
+/// Windows 不让删正在运行的 .exe，但允许你登记一条重启时执行的删除。
+/// 登记表在 HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager 的
+/// PendingFileRenameOperations 里，会话管理器在开机早期、文件还没被谁打开时
+/// 执行它。第二个参数传 NULL 就是删除而不是改名。
+#[cfg(windows)]
+fn delete_on_reboot(path: &Path) -> bool {
+    use std::os::windows::ffi::OsStrExt;
+
+    const MOVEFILE_DELAY_UNTIL_REBOOT: u32 = 0x4;
+    unsafe extern "system" {
+        fn MoveFileExW(existing: *const u16, new: *const u16, flags: u32) -> i32;
+    }
+
+    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    // 这条登记要写 HKLM，普通用户权限下会失败——失败就如实说，别假装删掉了。
+    unsafe { MoveFileExW(wide.as_ptr(), std::ptr::null(), MOVEFILE_DELAY_UNTIL_REBOOT) != 0 }
+}
+
 /// `vkx self uninstall`
 ///
 /// vkx 装的东西全在 `~/.vkx` 一个目录里，卸载就是删掉它。没有注册表、没有
@@ -641,14 +665,24 @@ pub fn uninstall(yes: bool) -> Result<()> {
         .map(|p| p.starts_with(&home))
         .unwrap_or(false);
 
-    if cfg!(windows) && self_inside {
+    // PATH 是装的时候加的，卸的时候就该撤掉。放在删文件之前——删完再撤，
+    // 中途出错就会留下一条指向空目录的 PATH。
+    path_remove();
+
+    #[cfg(windows)]
+    if self_inside {
         let keep = running.clone().unwrap_or_default();
         remove_except(&home, &keep)?;
-        ui::step("除了 vkx 自己，其余都删掉了");
-        ui::info(&format!(
-            "最后一步得你来（Windows 不让删正在运行的程序）：\n    del \"{}\"",
-            keep.display()
-        ));
+        if delete_on_reboot(&keep) {
+            ui::step("卸载完成");
+            ui::info("vkx 自己正在运行，已登记为下次开机时删除。");
+        } else {
+            ui::step("除了 vkx 自己，其余都删掉了");
+            ui::info(&format!(
+                "登记开机删除失败（需要管理员权限）。手动删掉这一个就干净了：\n    del \"{}\"",
+                keep.display()
+            ));
+        }
         return Ok(());
     }
 
@@ -656,7 +690,7 @@ pub fn uninstall(yes: bool) -> Result<()> {
     ui::step("卸载完成");
     if self_inside {
         // Unix 上删掉正在跑的二进制是合法的，inode 会活到进程退出。
-        ui::info("vkx 自己也一起删了。如果之前把它加进过 PATH，记得把那行去掉。");
+        ui::info("vkx 自己也一起删了。");
     }
     Ok(())
 }
@@ -679,4 +713,140 @@ fn remove_except(dir: &Path, keep: &Path) -> Result<()> {
         };
     }
     Ok(())
+}
+
+// ===========================================================================
+// PATH
+// ===========================================================================
+// 加和删都放在 vkx 里，不放在安装器里：手动装的人也该得到同样的处理，而且
+// 「怎么加的」和「怎么删」写在同一个文件里才不会日久对不上。
+
+/// 写进 shell 配置的那一行末尾带这个记号，卸载时靠它认出自己写的行。
+const MARK: &str = "# vkx";
+
+fn bin_dir() -> PathBuf {
+    vkx_home().join("bin")
+}
+
+/// 把 ~/.vkx/bin 加进 PATH。已经在了就什么都不做。
+pub fn path_add() -> Result<()> {
+    let bin = bin_dir();
+    if std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).any(|d| d == bin))
+        .unwrap_or(false)
+    {
+        ui::info("~/.vkx/bin 已经在 PATH 里了。");
+        return Ok(());
+    }
+
+    #[cfg(windows)]
+    {
+        // 直接改 HKCU\Environment 的 Path，然后让资源管理器重新读一遍。
+        // 用 setx 会把 PATH 截断到 1024 字符，这是它出了名的坑。
+        let script = format!(
+            "$p=[Environment]::GetEnvironmentVariable('Path','User'); \
+             if ($p -notlike '*{0}*') {{ \
+               [Environment]::SetEnvironmentVariable('Path', $p.TrimEnd(';') + ';{0}', 'User') }}",
+            bin.display()
+        );
+        let out = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-Command", &script])
+            .output()
+            .context(Code::Environment, "调用 powershell 改 PATH", "手动把 ~/.vkx/bin 加进 PATH")?;
+        if !out.status.success() {
+            return Err(Error::new(
+                Code::Environment,
+                "改 PATH 失败",
+                format!("手动把 {} 加进 PATH", bin.display()),
+            ));
+        }
+        ui::step("已把 ~/.vkx\\bin 加进用户 PATH（新开的终端才生效）");
+        return Ok(());
+    }
+
+    #[cfg(not(windows))]
+    {
+        let line = format!("export PATH=\"$HOME/.vkx/bin:$PATH\"  {MARK}\n");
+        let home = crate::toolchain::home_dir();
+        // 写进存在的那几个；一个都没有就建 .profile——总得有个落脚点。
+        let mut touched = Vec::new();
+        let candidates = [".zshrc", ".bashrc", ".profile"];
+        let existing: Vec<&str> = candidates
+            .iter()
+            .copied()
+            .filter(|f| home.join(f).is_file())
+            .collect();
+        let targets = if existing.is_empty() {
+            vec![".profile"]
+        } else {
+            existing
+        };
+        for name in targets {
+            let file = home.join(name);
+            let old = std::fs::read_to_string(&file).unwrap_or_default();
+            if old.contains(MARK) {
+                continue;
+            }
+            let mut text = old;
+            if !text.is_empty() && !text.ends_with('\n') {
+                text.push('\n');
+            }
+            text.push_str(&line);
+            crate::fs::write(&file, &text)?;
+            touched.push(name);
+        }
+        if touched.is_empty() {
+            ui::info("shell 配置里已经有 vkx 的 PATH 了。");
+        } else {
+            ui::step(&format!(
+                "已把 ~/.vkx/bin 加进 {}（新开的终端才生效）",
+                touched.join("、")
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// 把加过的 PATH 撤掉。加的时候写了记号，照记号删。
+pub fn path_remove() {
+    #[cfg(windows)]
+    {
+        let bin = bin_dir();
+        let script = format!(
+            "$p=[Environment]::GetEnvironmentVariable('Path','User'); \
+             $n=($p -split ';' | Where-Object {{ $_ -and $_ -ne '{}' }}) -join ';'; \
+             [Environment]::SetEnvironmentVariable('Path', $n, 'User')",
+            bin.display()
+        );
+        let _ = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-Command", &script])
+            .output();
+        ui::step("已从用户 PATH 里去掉 ~/.vkx\\bin");
+    }
+
+    #[cfg(not(windows))]
+    {
+        let home = crate::toolchain::home_dir();
+        let mut cleaned = Vec::new();
+        for name in [".zshrc", ".bashrc", ".profile"] {
+            let file = home.join(name);
+            let Ok(text) = std::fs::read_to_string(&file) else {
+                continue;
+            };
+            if !text.contains(MARK) {
+                continue;
+            }
+            let kept: String = text
+                .lines()
+                .filter(|l| !l.trim_end().ends_with(MARK))
+                .map(|l| format!("{l}\n"))
+                .collect();
+            if crate::fs::write(&file, &kept).is_ok() {
+                cleaned.push(name);
+            }
+        }
+        if !cleaned.is_empty() {
+            ui::step(&format!("已从 {} 里去掉 vkx 的 PATH", cleaned.join("、")));
+        }
+    }
 }
