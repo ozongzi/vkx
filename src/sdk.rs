@@ -489,9 +489,9 @@ pub const ENTRIES: &[Entry] = &[
         name: "vulkan-sdk", host: Host::WindowsX64,
         file: "vulkan-sdk.tar.gz",
         format: Format::TarGz, dest: "vulkan/vulkan", pick: "",
-        blake3: "e250687a79c78b22851fce2d8f9d8c090eae676c392d82be5baa3dc600994d98",
-        about: "loader + 校验层",
-        origin: "",
+        blake3: "1d4fc9be995f1cacc50b8422ffc3fcd9fd19081f6ccf3992bf0796f64faf4fe0",
+        about: "校验层，外加它要的 MSVC 运行库",
+        origin: "LunarG 的校验层，加上 https://aka.ms/vs/17/release/vc_redist.x64.exe 里的 MSVCP140.dll / VCRUNTIME140.dll / VCRUNTIME140_1.dll（LunarG 那个 DLL 是 MSVC 编的，机器上没装 VC++ 运行库时加载器会报 VK_ERROR_OUT_OF_HOST_MEMORY）",
     },
 ];
 

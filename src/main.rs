@@ -160,10 +160,10 @@ fn dispatch(cli: Cli) -> Result<u8> {
             eprintln!("  cd {relative}");
             eprintln!("  vkx run");
             eprintln!();
-            eprintln!(
-                "{}",
-                ui::dim("首次构建会拉取并编译 SDL3 等依赖，需要几分钟。")
-            );
+            // 别在这儿吓唬人：SDL3 是 sdk/libs 里的预编译库，find_package 直接
+            // 找到，既不出网也不编译。首次构建真正要编的只有 volk 那一个 .c、
+            // 两个着色器和工程自己的源码，十几秒的事。
+            eprintln!("{}", ui::dim("首次构建要编一遍着色器和工程源码，很快。"));
             Ok(0)
         }
         Command::Build { release, target } => {
