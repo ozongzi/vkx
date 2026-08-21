@@ -102,10 +102,7 @@ pub fn require(names: &[&str], what: &str) -> Result<()> {
     Err(Error::new(
         Code::MissingComponent,
         format!("{what} 还缺这些东西：\n{list}"),
-        format!(
-            "从离线安装包补齐：vkx install vkx-{}.zip",
-            host.name()
-        ),
+        format!("从离线安装包补齐：vkx install vkx-{}.zip", host.name()),
     ))
 }
 
@@ -177,14 +174,20 @@ fn unpack(archive: &Path, into: &Path, format: Format) -> Result<()> {
                 Format::TarGz => Box::new(flate2::read::GzDecoder::new(reader)),
                 Format::TarZst => Box::new(
                     ruzstd::decoding::StreamingDecoder::new(reader).map_err(|e| {
-                        Error::new(Code::MissingComponent, format!("zstd 流读不了：{e}"), "安装包可能损坏，重新下载")
+                        Error::new(
+                            Code::MissingComponent,
+                            format!("zstd 流读不了：{e}"),
+                            "安装包可能损坏，重新下载",
+                        )
                     })?,
                 ),
                 _ => Box::new(reader),
             };
-            let r = tar::Archive::new(stream)
-                .unpack(into)
-                .context(Code::MissingComponent, "解包", "安装包可能损坏，重新下载");
+            let r = tar::Archive::new(stream).unpack(into).context(
+                Code::MissingComponent,
+                "解包",
+                "安装包可能损坏，重新下载",
+            );
             ui::progress_finish("解包", total);
             r
         }
@@ -197,17 +200,26 @@ fn unpack_zip(archive: &Path, into: &Path) -> Result<()> {
         format!("打开 {}", archive.display()),
         "确认安装包完整",
     )?;
-    let mut zip = zip::ZipArchive::new(std::io::BufReader::new(file))
-        .map_err(|e| Error::new(Code::MissingComponent, format!("读 zip 失败：{e}"), "安装包可能损坏"))?;
+    let mut zip = zip::ZipArchive::new(std::io::BufReader::new(file)).map_err(|e| {
+        Error::new(
+            Code::MissingComponent,
+            format!("读 zip 失败：{e}"),
+            "安装包可能损坏",
+        )
+    })?;
 
     let total = std::fs::metadata(archive).map(|m| m.len()).unwrap_or(0);
     let mut seen = 0u64;
     let mut last = 0u64;
 
     for i in 0..zip.len() {
-        let mut item = zip
-            .by_index(i)
-            .map_err(|e| Error::new(Code::MissingComponent, format!("读 zip 第 {i} 项失败：{e}"), "安装包可能损坏"))?;
+        let mut item = zip.by_index(i).map_err(|e| {
+            Error::new(
+                Code::MissingComponent,
+                format!("读 zip 第 {i} 项失败：{e}"),
+                "安装包可能损坏",
+            )
+        })?;
         // enclosed_name 会挡住 `../` 这种想跑到目标目录外面的路径。
         seen += item.compressed_size();
         if seen - last > 4 << 20 {
@@ -397,15 +409,18 @@ pub fn install_from(bundle: &Path, force: bool, with_path: bool) -> Result<()> {
             let mut copied = 0u64;
             let mut last = 0u64;
             loop {
-                let n = item
-                    .read(&mut buf)
-                    .context(Code::Io, "从安装包里取出", "安装包可能损坏")?;
+                let n =
+                    item.read(&mut buf)
+                        .context(Code::Io, "从安装包里取出", "安装包可能损坏")?;
                 if n == 0 {
                     break;
                 }
                 hasher.update(&buf[..n]);
-                std::io::Write::write_all(&mut sink, &buf[..n])
-                    .context(Code::Io, "写入", "确认磁盘还有空间")?;
+                std::io::Write::write_all(&mut sink, &buf[..n]).context(
+                    Code::Io,
+                    "写入",
+                    "确认磁盘还有空间",
+                )?;
                 copied += n as u64;
                 if copied - last > 4 << 20 {
                     last = copied;
@@ -520,10 +535,7 @@ pub fn status() -> Result<()> {
         println!("  {mark:<4} {:<24} {}", e.name, e.about);
     }
     if have < entries.len() {
-        ui::info(&format!(
-            "补齐：vkx install vkx-{}.zip",
-            host.name()
-        ));
+        ui::info(&format!("补齐：vkx install vkx-{}.zip", host.name()));
     }
     Ok(())
 }
@@ -601,7 +613,6 @@ fn dir_size(path: &Path) -> u64 {
         })
         .sum()
 }
-
 
 /// 给一个文件排上「下次开机时删掉」。
 ///
@@ -752,7 +763,11 @@ pub fn path_add() -> Result<()> {
         let out = std::process::Command::new("powershell")
             .args(["-NoProfile", "-Command", &script])
             .output()
-            .context(Code::Environment, "调用 powershell 改 PATH", "手动把 ~/.vkx/bin 加进 PATH")?;
+            .context(
+                Code::Environment,
+                "调用 powershell 改 PATH",
+                "手动把 ~/.vkx/bin 加进 PATH",
+            )?;
         if !out.status.success() {
             return Err(Error::new(
                 Code::Environment,

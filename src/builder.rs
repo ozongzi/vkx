@@ -53,10 +53,10 @@ pub fn add_offline_sources(command: &mut Command) {
 /// 用它就等于让每个读者的产物取决于自己装了哪个版本的 VS。
 fn add_generator(command: &mut Command) -> Result<()> {
     let ninja = toolchain::require_ninja()?;
-    command
-        .arg("-G")
-        .arg("Ninja")
-        .arg(format!("-DCMAKE_MAKE_PROGRAM={}", toolchain::cmake_path(&ninja)));
+    command.arg("-G").arg("Ninja").arg(format!(
+        "-DCMAKE_MAKE_PROGRAM={}",
+        toolchain::cmake_path(&ninja)
+    ));
 
     if cfg!(windows) {
         let mingw = toolchain::llvm_mingw().ok_or_else(|| {

@@ -14,7 +14,31 @@ permissions:
   contents: write
 
 jobs:
+  # 格式体检。放在 build 前面：格式歪了就别浪费三台 runner 去编。
+  #
+  # clang-format 必须钉版本——不同版本排出来的结果不一样，读者跑 vkx fmt 用的是
+  # SDK 里那份 22.1.8，这里就得是同一个。PyPI 上那个轮子和 SDK 装的是同一个包。
+  fmt:
+    name: 格式
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust
+        run: cargo fmt --check
+
+      - name: 装 clang-format 22.1.8
+        run: pipx install clang-format==22.1.8
+
+      # 模版必须开箱就是干净的：读者 vkx new 之后第一次 vkx fmt 不该冒出 diff。
+      - name: 模版 C++
+        run: |
+          cd template
+          find src -type f \( -name '*.cpp' -o -name '*.h' \) -print0 \
+            | xargs -0 clang-format --dry-run --Werror
+
   build:
+    needs: fmt
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:

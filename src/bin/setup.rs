@@ -160,7 +160,11 @@ fn run(vkx: &Path, args: &[&str]) {
     let status = Command::new(vkx).args(args).status();
     match status {
         Ok(s) if s.success() => {}
-        Ok(s) => die(&format!("vkx {} 失败（退出码 {}）", args[0], s.code().unwrap_or(-1))),
+        Ok(s) => die(&format!(
+            "vkx {} 失败（退出码 {}）",
+            args[0],
+            s.code().unwrap_or(-1)
+        )),
         Err(e) => die(&format!("跑不了 vkx：{e}")),
     }
 }

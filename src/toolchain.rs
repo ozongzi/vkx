@@ -497,7 +497,9 @@ mod tests {
         // Windows 的 LoadLibraryEx 带 LOAD_LIBRARY_SEARCH_* 时正斜杠会报 87，
         // 而 vkx_home() 是反斜杠、join 的字面量是正斜杠，天然会混。
         assert_eq!(
-            windows_native_text(r"C:\Users\me\.vkx\sdk/vulkan/vulkan\share/vulkan/explicit_layer.d"),
+            windows_native_text(
+                r"C:\Users\me\.vkx\sdk/vulkan/vulkan\share/vulkan/explicit_layer.d"
+            ),
             r"C:\Users\me\.vkx\sdk\vulkan\vulkan\share\vulkan\explicit_layer.d"
         );
         assert!(!windows_native_text(r"C:\Users\me\.vkx\sdk/vulkan").contains('/'));
@@ -519,4 +521,3 @@ mod tests {
         assert!(!windows_cmake_text(r"C:\Users\x\.vkx").contains('\\'));
     }
 }
-

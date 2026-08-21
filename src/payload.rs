@@ -64,7 +64,10 @@ impl<R: Read + Seek> Seek for Slice<R> {
             SeekFrom::Current(n) => self.pos as i64 + n,
         };
         if want < 0 {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "定位到了负数位置"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "定位到了负数位置",
+            ));
         }
         self.pos = want as u64;
         Ok(self.pos)
