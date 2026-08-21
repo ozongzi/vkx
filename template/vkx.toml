@@ -11,16 +11,6 @@ version = "0.1.0"
 # 生成这个工程时用的 vkx 版本。
 version = "{{VKX_VERSION}}"
 
-[ios]
-# Apple 开发者团队 ID。填了之后 iOS 真机构建会打开自动签名。
-# 在 developer.apple.com 的 Membership 页面能查到。
-# development_team = "ABCDE12345"
-
-# 要从源码编译的库。打开一个就多几分钟的首次编译时间，所以默认都关着。
-# 用 `vkx add <名字>` 打开，`vkx deps` 看现在有哪些可用。
-#
-# 预编译的 C 库（SDL3、mbedTLS…）和只有头文件的库（cpp-httplib、stb_image…）
-# 永远可用，不需要在这里声明——直接 #include 就行。
 [libs]
 jolt = false            # 物理引擎
 gamenetworking = false  # 局内实时传输

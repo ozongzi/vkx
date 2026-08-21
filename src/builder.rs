@@ -46,11 +46,15 @@ pub fn add_offline_sources(command: &mut Command) {
 
 /// 挑生成器和编译器。
 ///
-/// 一律 Ninja + llvm-mingw（Windows）。
+/// 一律 Ninja，编译器一律 clang：Windows 用 SDK 里的 llvm-mingw，Linux 用 SDK 里的
+/// LLVM，macOS/iOS 用 Xcode 的 Apple clang（Xcode 反正躲不掉——SDK 头文件、系统
+/// framework、链接器、codesign 都只能从它来，再自带一份 clang 只是多一层错配）。
 ///
-/// 就算机器上装了 Visual Studio 也不用 MSVC：SDK 包里的预编译库是 llvm-mingw
+/// Windows 上就算机器装了 Visual Studio 也不用 MSVC：SDK 里的预编译库是 llvm-mingw
 /// 编的，两种 ABI 混在一起会在链接期炸。MSVC 的工具集也不允许我们分发，
 /// 用它就等于让每个读者的产物取决于自己装了哪个版本的 VS。
+///
+/// Linux 上不用系统编译器，理由见 toolchain::llvm_linux()。
 fn add_generator(command: &mut Command) -> Result<()> {
     let ninja = toolchain::require_ninja()?;
     command.arg("-G").arg("Ninja").arg(format!(
@@ -78,6 +82,51 @@ fn add_generator(command: &mut Command) -> Result<()> {
             ))
             // 静态链接运行时，产物不依赖 llvm-mingw 的 DLL。
             .arg("-DCMAKE_EXE_LINKER_FLAGS=-static");
+    }
+
+    if cfg!(target_os = "linux") {
+        let llvm = toolchain::llvm_linux().ok_or_else(|| {
+            Error::new(
+                Code::CommandFailed,
+                "Linux 上没有 llvm（C++ 编译器）",
+                "`vkx doctor` 看一眼，再用 `vkx install vkx-linux-x64.zip` 补齐",
+            )
+        })?;
+        let bin = llvm.join("bin");
+        command
+            .arg(format!(
+                "-DCMAKE_C_COMPILER={}",
+                toolchain::cmake_path(&bin.join("clang"))
+            ))
+            .arg(format!(
+                "-DCMAKE_CXX_COMPILER={}",
+                toolchain::cmake_path(&bin.join("clang++"))
+            ))
+            // 编译期只要这一条：系统没有 libstdc++ 的头文件（发行版默认不装
+            // g++），不指定 libc++ 的话连 <iostream> 都找不到。
+            //
+            // 其余几条是链接期的，只能放在 LINKER_FLAGS 里——放进 CXX_FLAGS 的话
+            // 每编一个文件都会多三行 "argument unused during compilation"。
+            .arg("-DCMAKE_CXX_FLAGS=-stdlib=libc++")
+            // 下面每一条都是被一次真实的链接失败逼出来的，别随手删：
+            //
+            //   -fuse-ld=lld         发行版默认不装 binutils，没有 ld，
+            //                        clang 会报 posix_spawn failed
+            //   -rtlib=compiler-rt   clang 默认要 GCC 的运行时，
+            //                        没有就报 cannot open crtbeginS.o / -lgcc
+            //   -unwindlib=libunwind 配套上一条，异常展开不走 libgcc_eh
+            //   -l:libc++abi.a       -static-libstdc++ 只管到 libc++.a，abi 那份要
+            //                        点名；而且必须写 -l:xxx.a——写 -lc++abi 的话
+            //                        链接器优先挑 .so，产物跑起来报
+            //                        libc++abi.so.1: cannot open shared object file
+            //
+            // 只静态到 C++ 运行时为止，glibc 保持动态：全静态的话 dlopen 不可靠，
+            // 而 Vulkan loader 正是靠 dlopen 去加载 ICD 的。
+            .arg(format!(
+                "-DCMAKE_EXE_LINKER_FLAGS={}",
+                "-fuse-ld=lld -rtlib=compiler-rt -unwindlib=libunwind \
+                 -static-libstdc++ -l:libc++abi.a -l:libunwind.a"
+            ));
     }
     Ok(())
 }

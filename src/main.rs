@@ -173,8 +173,8 @@ fn dispatch(cli: Cli) -> Result<u8> {
             let artifact = match target {
                 Target::Desktop => builder::build(&project, profile)?,
                 Target::Android => mobile::build_android(&project, profile)?,
-                Target::Ios => mobile::build_ios(&project, profile, false)?,
-                Target::IosDevice => mobile::build_ios(&project, profile, true)?,
+                Target::Ios => mobile::build_ios(&project, profile)?,
+                Target::IosDevice => mobile::generate_ios_project(&project)?,
             };
             eprintln!();
             eprintln!("产物：{}", ui::bold(&pretty_path(&artifact)));
@@ -191,8 +191,12 @@ fn dispatch(cli: Cli) -> Result<u8> {
             let code = match target {
                 Target::Desktop => builder::run(&project, profile, &args)?,
                 Target::Android => mobile::run_android(&project, profile)?,
-                Target::Ios => mobile::run_ios(&project, profile, false)?,
-                Target::IosDevice => mobile::run_ios(&project, profile, true)?,
+                Target::Ios => mobile::run_ios(&project, profile)?,
+                // 真机要签名，签名在 Xcode 里做。
+                Target::IosDevice => {
+                    mobile::generate_ios_project(&project)?;
+                    0
+                }
             };
             Ok(u8::try_from(code).unwrap_or(1))
         }
@@ -202,7 +206,17 @@ fn dispatch(cli: Cli) -> Result<u8> {
             let outputs = match target {
                 Target::Desktop => vec![dist::dist_desktop(&project)?],
                 Target::Android => dist::dist_android(&project)?,
-                Target::Ios | Target::IosDevice => vec![dist::dist_ios(&project)?],
+                // iOS 的分发包由 Xcode 出：Archive -> Distribute App。
+                // 签名绑 Apple 账号，格式还跟着 Xcode 版本变，vkx 发出去就不更新了，
+                // 代劳只会留下一个修不好的报错。
+                Target::Ios | Target::IosDevice => {
+                    return Err(Error::new(
+                        Code::Usage,
+                        "iOS 的分发包不由 vkx 生成",
+                        "先 `vkx build --target ios-device` 生成 Xcode 工程，再在 Xcode 里 Archive",
+                    )
+                    .hint("签名和上架绑 Apple 账号，那些事 Xcode 做得比 vkx 好"));
+                }
             };
 
             eprintln!();
@@ -328,7 +342,7 @@ enum Target {
     Android,
     /// iOS 模拟器
     Ios,
-    /// iOS 真机（需要开发者证书）
+    /// iOS 真机：生成 Xcode 工程，签名和运行在 Xcode 里做
     IosDevice,
 }
 

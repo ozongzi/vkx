@@ -5,7 +5,6 @@
 //!   Windows .zip（可执行文件是静态链接的，解压即用）
 //!   Linux   .tar.gz
 //!   Android 签名 APK + AAB（AAB 是上架 Google Play 用的格式）
-//!   iOS     .ipa（需要开发者证书）
 //!
 //! 全部产出在工程的 dist/ 目录下。
 
@@ -203,92 +202,3 @@ pub fn dist_android(project: &Project) -> Result<Vec<PathBuf>> {
 // ===========================================================================
 // iOS
 // ===========================================================================
-
-/// 出 .ipa。需要 vkx.toml 里填了开发者团队 ID，否则签不了名。
-pub fn dist_ios(project: &Project) -> Result<PathBuf> {
-    let team = project.development_team.clone().ok_or_else(|| {
-        Error::new(
-            Code::CommandFailed,
-            "iOS 分发包必须签名，但没有配置开发者团队",
-            "在 vkx.toml 里填：[ios] development_team = \"你的团队 ID\"",
-        )
-    })?;
-
-    // 先让 CMake 生成好 Xcode 工程（真机配置）。
-    let xcodeproj = mobile::configure_ios(project, true)?;
-    let build_dir = xcodeproj.parent().unwrap_or(&project.root).to_path_buf();
-    let archive = build_dir.join(format!("{}.xcarchive", project.name));
-
-    ui::step("xcodebuild archive");
-    toolchain::run(
-        Command::new("xcodebuild")
-            .arg("-project")
-            .arg(&xcodeproj)
-            .args([
-                "-scheme",
-                &project.name,
-                "-configuration",
-                "Release",
-                "-destination",
-                "generic/platform=iOS",
-                "-archivePath",
-            ])
-            .arg(&archive)
-            .args(["archive", "-quiet"]),
-        "xcodebuild archive",
-    )?;
-
-    // 导出用的选项文件，method=development 表示导出给自己的设备装。
-    let options = build_dir.join("ExportOptions.plist");
-    crate::fs::write(
-        &options,
-        format!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
-             <!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \
-             \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n\
-             <plist version=\"1.0\">\n<dict>\n\
-             \t<key>method</key>\n\t<string>development</string>\n\
-             \t<key>teamID</key>\n\t<string>{team}</string>\n\
-             \t<key>signingStyle</key>\n\t<string>automatic</string>\n\
-             \t<key>stripSwiftSymbols</key>\n\t<true/>\n\
-             </dict>\n</plist>\n"
-        ),
-    )?;
-
-    let dist = prepare_dist_dir(project)?;
-    let export_dir = dist.join(".ios-export");
-    if export_dir.exists() {
-        crate::fs::remove_dir_all(&export_dir)?;
-    }
-
-    ui::step("导出 .ipa");
-    toolchain::run(
-        Command::new("xcodebuild")
-            .arg("-exportArchive")
-            .arg("-archivePath")
-            .arg(&archive)
-            .arg("-exportOptionsPlist")
-            .arg(&options)
-            .arg("-exportPath")
-            .arg(&export_dir)
-            .arg("-quiet"),
-        "xcodebuild exportArchive",
-    )?;
-
-    // 导出目录里就一个 .ipa，挪到 dist/ 下并按统一规则命名。
-    let exported = crate::fs::read_dir(&export_dir)?
-        .into_iter()
-        .find(|path| path.extension().is_some_and(|ext| ext == "ipa"))
-        .ok_or_else(|| {
-            Error::new(
-                Code::CommandFailed,
-                "导出完成，但没找到 .ipa",
-                "看上面 xcodebuild 的导出输出；签名配置不全时它会静默产出空目录",
-            )
-        })?;
-
-    let target = dist.join(format!("{}.ipa", package_name(project, "ios")));
-    crate::fs::copy(&exported, &target)?;
-    crate::fs::remove_dir_all(&export_dir)?;
-    Ok(target)
-}

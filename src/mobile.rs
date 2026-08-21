@@ -277,20 +277,15 @@ pub fn configure_ios(project: &Project, device: bool) -> Result<PathBuf> {
         ));
     builder::add_offline_sources(&mut configure);
 
-    match project.development_team.as_deref() {
-        Some(team) => {
-            // 填了开发者团队就打开自动签名，Xcode 里可以直接连真机跑。
-            configure
-                .arg(format!("-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM={team}"))
-                .arg("-DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_STYLE=Automatic");
-        }
-        None if !device => {
-            // 模拟器不需要签名。
-            configure
-                .arg("-DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO")
-                .arg("-DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO");
-        }
-        None => {}
+    if !device {
+        // 模拟器不需要签名，关掉省事。
+        //
+        // 真机这一支什么都不设：签名是绑 Apple 账号的（证书、描述文件、团队 ID），
+        // vkx 代劳意味着要跟着 Apple 的格式变，而 vkx 发出去就不再更新了。
+        // 生成的 .xcodeproj 里 Xcode 的自动签名开箱可用，那才是这件事该待的地方。
+        configure
+            .arg("-DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO")
+            .arg("-DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO");
     }
 
     toolchain::run(&mut configure, "CMake 配置")?;
@@ -304,11 +299,20 @@ pub fn configure_ios(project: &Project, device: bool) -> Result<PathBuf> {
         ));
     }
 
-    // 这个工程可以直接用 Xcode 打开，调试、连真机都在里面做。
+    // 这个工程可以直接用 Xcode 打开，调试、签名、连真机、上架都在里面做。
     ui::info(&format!("Xcode 工程：{}", xcodeproj.display()));
-    if project.development_team.is_none() {
-        ui::info("连真机需要签名：在 vkx.toml 的 [ios] 里填 development_team");
-    }
+    Ok(xcodeproj)
+}
+
+/// 生成真机用的 Xcode 工程，然后就交出去。
+///
+/// vkx 到此为止：往下的签名、真机调试、上架，都是 Xcode 和 Apple 账号的事。
+pub fn generate_ios_project(project: &Project) -> Result<PathBuf> {
+    let xcodeproj = configure_ios(project, true)?;
+    ui::step("iOS 工程已生成");
+    ui::info("接下来用 Xcode 打开它：");
+    ui::info(&format!("  open {}", xcodeproj.display()));
+    ui::info("在 Xcode 里选好 Team 打开自动签名，就能连真机跑、也能 Archive 上架。");
     Ok(xcodeproj)
 }
 
@@ -319,16 +323,16 @@ fn ios_build_dir(project: &Project, device: bool) -> PathBuf {
         .join(if device { "ios" } else { "ios-simulator" })
 }
 
-pub fn build_ios(project: &Project, profile: Profile, device: bool) -> Result<PathBuf> {
-    configure_ios(project, device)?;
+/// 编译模拟器版。
+///
+/// 只有模拟器：真机构建要签名，而签名在 Xcode 里做（见 configure_ios）。
+/// 要真机包就 `vkx build --target ios-device` 生成工程，然后用 Xcode 打开。
+pub fn build_ios(project: &Project, profile: Profile) -> Result<PathBuf> {
+    configure_ios(project, false)?;
 
     let cmake = toolchain::require_cmake()?;
-    let build_dir = ios_build_dir(project, device);
-    let sysroot = if device {
-        "iphoneos"
-    } else {
-        "iphonesimulator"
-    };
+    let build_dir = ios_build_dir(project, false);
+    let sysroot = "iphonesimulator";
 
     ui::step("编译");
     let mut build = Command::new(&cmake);
@@ -340,13 +344,7 @@ pub fn build_ios(project: &Project, profile: Profile, device: bool) -> Result<Pa
         // xcodebuild 默认把每条编译命令都打出来，刷屏且没用。
         .arg("--")
         .arg("-quiet");
-    toolchain::run(&mut build, "编译").map_err(|e| {
-        if device && project.development_team.is_none() {
-            e.hint("真机构建需要签名：在 vkx.toml 的 [ios] 里填 development_team = \"你的团队 ID\"")
-        } else {
-            e
-        }
-    })?;
+    toolchain::run(&mut build, "编译")?;
 
     let app = build_dir
         .join(format!("{}-{sysroot}", profile.cmake_config()))
@@ -361,16 +359,8 @@ pub fn build_ios(project: &Project, profile: Profile, device: bool) -> Result<Pa
     Ok(app)
 }
 
-pub fn run_ios(project: &Project, profile: Profile, device: bool) -> Result<i32> {
-    let app = build_ios(project, profile, device)?;
-
-    if device {
-        ui::step("已生成 .app");
-        ui::info(&app.display().to_string());
-        ui::info("装到真机：xcrun devicectl device install app --device <UDID> 上面的路径");
-        ui::info("或者用 Xcode 打开上面那个工程直接运行。");
-        return Ok(0);
-    }
+pub fn run_ios(project: &Project, profile: Profile) -> Result<i32> {
+    let app = build_ios(project, profile)?;
 
     let simulator = boot_simulator()?;
     ui::step("安装到模拟器");

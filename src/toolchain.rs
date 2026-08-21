@@ -9,7 +9,7 @@
 //!   bin/vkx
 //!   sdk/toolchain/{cmake,ninja,slang,clang-format,llvm-mingw}
 //!   sdk/vulkan/{vulkan,moltenvk}
-//!   sdk/libs/{include,lib}                         预编译的 C 库和头文件
+//!   sdk/libs/<target>/{include,lib}                预编译库，一个 target 一份
 //!   sdk/sources/{jolt,gamenetworkingsockets}       要从源码编的那几个
 //!   sdk/android/{jdk,gradle,sdk}                   移动端打包用（暂未进包）
 
@@ -278,6 +278,19 @@ pub fn require_slangc() -> Result<PathBuf> {
 }
 
 /// llvm-mingw 里的 clang，Windows 上没有 MSVC 时用它。
+/// Linux 上的 C++ 编译器，SDK 自带。
+///
+/// 和 Windows 用 llvm-mingw 是同一个理由，只是 Linux 上更严重：这里发行版默认
+/// 连 g++ 都不装（实测 Ubuntu 24.04 桌面版一个 C++ 编译器都没有），而就算学员
+/// 自己装了 clang，Linux 上的 clang 默认仍然用系统的 libstdc++——版本和
+/// _GLIBCXX_USE_CXX11_ABI 各机器不同，预编译的 C++ 库照样对不上。
+///
+/// 所以这里连 libc++ 一起自带，并且静态链进产物：钉死的必须是运行时，不只是编译器。
+pub fn llvm_linux() -> Option<PathBuf> {
+    let dir = vkx_home().join("sdk/toolchain/llvm");
+    dir.join("bin").join(exe("clang")).is_file().then_some(dir)
+}
+
 pub fn llvm_mingw() -> Option<PathBuf> {
     let dir = vkx_home().join("sdk/toolchain/llvm-mingw");
     dir.join("bin").join(exe("clang")).is_file().then_some(dir)

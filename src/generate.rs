@@ -128,9 +128,14 @@ pub fn cmake(project: &Project) -> Result<()> {
 
     let mut s = String::new();
     let name = &project.name;
+    // 注意别叫 version：下面 format! 里 {version} 是具名实参，指 vkx 自己的版本。
+    let project_version = &project.version;
     // 这个文件是每次构建重新生成的，写绝对路径不会跟着仓库跑到别人机器上。
     // 路径要过一道 cmake_path()：反斜杠在 CMake 字符串里是转义符。
     let sdk_libs = crate::toolchain::cmake_path(&crate::install::sdk_dir().join("libs"));
+    // 宿主平台的名字。Android / iOS 那两支由下面的 CMake 自己挑，因为交叉编译
+    // 的目标在生成这个文件时还不知道，要等 CMake 配置期看 ANDROID / IOS 变量。
+    let host_dir = crate::install::host()?.name();
     s.push_str(&format!(
         "\
 # 由 vkx {version} 从 ../vkx.toml 生成。别手改这个文件——下次构建会覆盖掉。
@@ -159,10 +164,24 @@ list(APPEND CMAKE_MODULE_PATH \"${{CMAKE_CURRENT_SOURCE_DIR}}/cmake\")
 include(FetchContent)
 include(VkxShaders)
 
-# SDK 里那份预编译的 C 库。vkx 把路径填在这里（它知道 VKX_HOME 在哪），
-# find_package 顺着 CMAKE_PREFIX_PATH 就能找到 SDL3、FreeType、mbedTLS。
-# 只有头文件的那几个（GLM、cpp-httplib、stb）没有 config 包，直接给 include 路径。
-set(VKX_SDK_LIBS \"{sdk_libs}\" CACHE PATH \"\")
+# SDK 里那份预编译的库。每个 target 一份，因为库是编好的二进制，换个目标就
+# 换一份——头文件也一起分开：SDL_build_config.h 这类是按目标生成的，共用会错。
+#
+# 目标在这里才定得下来：桌面就是跑 vkx 的这台机器，Android 和 iOS 是交叉编译，
+# 要等 CMake 拿到 ANDROID / IOS 变量才知道。
+set(VKX_SDK_LIBS_ROOT \"{sdk_libs}\" CACHE PATH \"\")
+if(ANDROID)
+    # ANDROID_ABI 是 NDK 的叫法，转成我们自己的 target 名。
+    if(ANDROID_ABI STREQUAL \"arm64-v8a\")
+        set(VKX_SDK_LIBS \"${{VKX_SDK_LIBS_ROOT}}/android-arm64\")
+    else()
+        set(VKX_SDK_LIBS \"${{VKX_SDK_LIBS_ROOT}}/android-x64\")
+    endif()
+elseif(IOS)
+    set(VKX_SDK_LIBS \"${{VKX_SDK_LIBS_ROOT}}/ios-arm64\")
+else()
+    set(VKX_SDK_LIBS \"${{VKX_SDK_LIBS_ROOT}}/{host_dir}\")
+endif()
 if(EXISTS \"${{VKX_SDK_LIBS}}\")
     list(APPEND CMAKE_PREFIX_PATH \"${{VKX_SDK_LIBS}}\")
 endif()
@@ -295,6 +314,10 @@ if(IOS)
     set_target_properties(${{VKX_TARGET}} PROPERTIES
         MACOSX_BUNDLE TRUE
         MACOSX_BUNDLE_INFO_PLIST \"${{VKX_ROOT}}/ios/Info.plist\"
+        # 版本号来自 vkx.toml。CMake 会把 ios/Info.plist 当模版处理，
+        # 里面的 ${{MACOSX_BUNDLE_*}} 由这两行填掉。
+        MACOSX_BUNDLE_SHORT_VERSION_STRING \"{project_version}\"
+        MACOSX_BUNDLE_BUNDLE_VERSION \"{project_version}\"
         XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER \"{package_id}\"
         XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY \"1,2\")
 
@@ -443,4 +466,92 @@ fn write_presets(project: &Project) -> Result<()> {
 }
 "#;
     crate::fs::write(&project.root.join("CMakePresets.json"), presets)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::project::Project;
+
+    fn 造一个工程(dir: &std::path::Path, version: &str) -> Project {
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::create_dir_all(dir.join("shaders")).unwrap();
+        std::fs::write(dir.join("src/main.cpp"), "int main(){return 0;}").unwrap();
+        Project {
+            root: dir.to_path_buf(),
+            name: "app".into(),
+            package_id: "tech.yinli.app".into(),
+            version: version.into(),
+            libs: Vec::new(),
+        }
+    }
+
+    /// 生成一份 CMakeLists 并读回来。
+    ///
+    /// tag 是每个测试自己的名字：测试是并行跑的，共用目录会互相把对方删掉。
+    fn 生成(tag: &str, version: &str) -> String {
+        let dir = std::env::temp_dir().join(format!("vkxgen-{tag}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        let project = 造一个工程(&dir, version);
+        assert!(super::cmake(&project).is_ok(), "生成 CMakeLists 失败");
+        let text = std::fs::read_to_string(dir.join("target/CMakeLists.txt")).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        text
+    }
+
+    // 生成的 CMakeLists 里有两个「版本」：vkx 自己的（写在抬头注释里）和工程的
+    // （刻进 iOS bundle）。它们在 format! 里差一点就同名——具名实参会静默盖掉
+    // 同名局部变量，结果是 iOS 包的版本号变成 vkx 的版本号，编译和构建全都不报错，
+    // 只有掏出产物里的 Info.plist 才看得出来。这条测试就是防这个。
+    #[test]
+    fn ios_版本号取工程的而不是_vkx_的() {
+        let text = 生成("ios-version", "2.7.3");
+        assert!(
+            text.contains("MACOSX_BUNDLE_SHORT_VERSION_STRING \"2.7.3\""),
+            "iOS 的 short version 没取到工程版本"
+        );
+        assert!(
+            text.contains("MACOSX_BUNDLE_BUNDLE_VERSION \"2.7.3\""),
+            "iOS 的 bundle version 没取到工程版本"
+        );
+        let vkx = env!("CARGO_PKG_VERSION");
+        assert!(
+            !text.contains(&format!("MACOSX_BUNDLE_BUNDLE_VERSION \"{vkx}\"")),
+            "iOS 版本号写成了 vkx 自己的版本（{vkx}）——多半是被 format! 的具名实参遮蔽了"
+        );
+        // 抬头那句仍然该是 vkx 的版本，别把两个搞反了
+        assert!(
+            text.contains(&format!("由 vkx {vkx} ")),
+            "抬头的 vkx 版本丢了"
+        );
+    }
+
+    // 预编译库按 target 分目录之后，三条分支都得能拼出路径。
+    #[test]
+    fn 三种目标各自选到自己的库目录() {
+        let text = 生成("libs-dirs", "0.1.0");
+        assert!(text.contains("VKX_SDK_LIBS_ROOT"), "没有 libs 根变量");
+        for 片段 in [
+            "${VKX_SDK_LIBS_ROOT}/android-arm64",
+            "${VKX_SDK_LIBS_ROOT}/android-x64",
+            "${VKX_SDK_LIBS_ROOT}/ios-arm64",
+        ] {
+            assert!(text.contains(片段), "缺少分支：{片段}");
+        }
+        // 桌面那支用的是宿主名，跟着这台机器走
+        let Ok(host) = crate::install::host() else {
+            return; // 不认识的开发平台，这条不适用
+        };
+        let host = host.name();
+        assert!(
+            text.contains(&format!("${{VKX_SDK_LIBS_ROOT}}/{host}")),
+            "桌面分支没指向 libs/{host}"
+        );
+    }
+
+    // 模版里的占位符是 {{}}，CMake 的是 ${}；生成出来的文件里不该再有前者。
+    #[test]
+    fn 生成的_cmakelists_没有未替换的占位符() {
+        let text = 生成("no-placeholder", "0.1.0");
+        assert!(!text.contains("{{"), "生成的 CMakeLists 里还有 {{{{");
+    }
 }

@@ -256,10 +256,10 @@ pub const ENTRIES: &[Entry] = &[
         host: Host::MacosArm64,
         file: "libs.tar.zst",
         format: Format::TarZst,
-        dest: "libs",
+        dest: "libs/macos-arm64",
         pick: "",
         blake3: "375060b31551da7e3da477500a2551a8cd85fcb90713ef8593fb0d9c8592449e",
-        about: "预编译 C 库和头文件",
+        about: "预编译库和头文件（按 target 分目录）",
         origin: "",
     },
     Entry {
@@ -410,11 +410,29 @@ pub const ENTRIES: &[Entry] = &[
         host: Host::LinuxX64,
         file: "libs.tar.zst",
         format: Format::TarZst,
-        dest: "libs",
+        dest: "libs/linux-x64",
         pick: "",
         blake3: "ef37e484f5c8ec1504fb2c074a8c80913866139f7c18b891b8d0d60f331a5ab4",
-        about: "预编译 C 库和头文件",
+        about: "预编译库和头文件（按 target 分目录）",
         origin: "",
+    },
+    Entry {
+        name: "llvm",
+        host: Host::LinuxX64,
+        file: "llvm.tar.zst",
+        format: Format::TarZst,
+        dest: "toolchain/llvm",
+        pick: "llvm-min",
+        blake3: "9f9f8ed085704c09aef3907ecd170d6c1ee0fb38a809d6cca8c63bbb15b33cac",
+        about: "Linux 上的 C++ 编译器和 libc++",
+        // 官方完整包 1939 MB / 解开 12 GB，绝大部分是 lldb、clang-tidy、flang、
+        // mlir 和给「拿 LLVM 写工具」用的开发库，我们一行都不碰。裁到只剩
+        // clang + lld + builtin 头文件 + libc++ 之后是 137 MB / 675 MB。
+        //
+        // 裁的时候务必用减法（删掉不要的），别用加法（挑要的）：
+        // include/x86_64-unknown-linux-gnu/c++/v1/__config_site 只有 1925 字节，
+        // 漏掉它整套 libc++ 头文件全废，报错还只是一句 file not found。
+        origin: "https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.8/LLVM-22.1.8-Linux-X64.tar.xz",
     },
     Entry {
         name: "ninja",
@@ -553,10 +571,10 @@ pub const ENTRIES: &[Entry] = &[
         host: Host::WindowsX64,
         file: "libs.tar.zst",
         format: Format::TarZst,
-        dest: "libs",
+        dest: "libs/windows-x64",
         pick: "",
         blake3: "4d54c7858b53a02f7e435a5f868aced530a87f5bd045d8d9bf2bc3d650ddcc1c",
-        about: "预编译 C 库和头文件",
+        about: "预编译库和头文件（按 target 分目录）",
         origin: "",
     },
     Entry {
@@ -630,4 +648,148 @@ pub const ENTRIES: &[Entry] = &[
 /// 本机这个开发平台要装的全部条目。
 pub fn entries(host: Host) -> impl Iterator<Item = &'static Entry> {
     ENTRIES.iter().filter(move |e| e.host == host)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ENTRIES, Host, Target};
+
+    fn 某平台的(host: Host) -> Vec<&'static super::Entry> {
+        ENTRIES.iter().filter(|e| e.host == host).collect()
+    }
+
+    // blake3 是安装时唯一的完整性依据。写错一位，学员那边就是「校验不通过」，
+    // 而包本身是好的——这种错查起来最费劲，且发布之后改不了。
+    #[test]
+    fn 每条的_blake3_都是合法的() {
+        for e in ENTRIES {
+            assert_eq!(
+                e.blake3.len(),
+                64,
+                "{}（{}）的 blake3 长度是 {}，应该是 64",
+                e.name,
+                e.host.name(),
+                e.blake3.len()
+            );
+            assert!(
+                e.blake3
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
+                "{}（{}）的 blake3 里有非小写十六进制字符",
+                e.name,
+                e.host.name()
+            );
+        }
+    }
+
+    // 同一个平台里名字重了，后一条会把前一条的 stamp 覆盖掉，
+    // 表现是「装好了但东西不在」。
+    #[test]
+    fn 同一平台内组件名不重复() {
+        for host in Host::ALL {
+            let mut 见过 = Vec::new();
+            for e in 某平台的(*host) {
+                assert!(
+                    !见过.contains(&e.name),
+                    "{} 上有两条叫 {} 的组件",
+                    host.name(),
+                    e.name
+                );
+                见过.push(e.name);
+            }
+        }
+    }
+
+    // dest 是解包目标，直接 join 到 ~/.vkx/sdk 上。空串会把整个 sdk 目录当靶子，
+    // `..` 能写到 ~/.vkx 外面去，绝对路径更是直接跑到系统里。
+    #[test]
+    fn dest_不会跑出_sdk_目录() {
+        for e in ENTRIES {
+            assert!(!e.dest.is_empty(), "{} 的 dest 是空的", e.name);
+            assert!(
+                !e.dest.starts_with('/') && !e.dest.contains(':'),
+                "{} 的 dest 是绝对路径：{}",
+                e.name,
+                e.dest
+            );
+            assert!(
+                !e.dest.split('/').any(|seg| seg == ".."),
+                "{} 的 dest 里有 ..：{}",
+                e.name,
+                e.dest
+            );
+        }
+    }
+
+    // 预编译库按 target 分目录之后，宿主那一份必须落在以自己命名的子目录里。
+    // 写错的话 CMake 那边找不到（generate.rs 按同一个名字拼路径），
+    // 报错是一句 find_package 失败，看不出根因在组件表上。
+    #[test]
+    fn libs_落在按_target_分的子目录里() {
+        for host in Host::ALL {
+            let libs: Vec<_> = 某平台的(*host)
+                .into_iter()
+                .filter(|e| e.name == "libs")
+                .collect();
+            assert_eq!(libs.len(), 1, "{} 上的 libs 条目不是一条", host.name());
+            assert_eq!(
+                libs[0].dest,
+                format!("libs/{}", host.name()),
+                "{} 的 libs 该解到 libs/{}",
+                host.name(),
+                host.name()
+            );
+        }
+    }
+
+    // 三个平台都得能自举：没有 cmake / ninja / slang 就什么都构建不了。
+    #[test]
+    fn 每个平台都有构建必需的组件() {
+        for host in Host::ALL {
+            let 有: Vec<_> = 某平台的(*host).into_iter().map(|e| e.name).collect();
+            for 必需 in ["cmake", "ninja", "slang", "libs", "vulkan-sdk"] {
+                assert!(有.contains(&必需), "{} 上缺 {}", host.name(), 必需);
+            }
+        }
+    }
+
+    // C++ 编译器一律 clang，且两个不发 Xcode 的平台必须自带一份：
+    //   Windows  llvm-mingw（不能用 MSVC，ABI 和预编译库对不上，见 builder.rs）
+    //   Linux    llvm（系统默认连 g++ 都没有，实测 Ubuntu 24.04 桌面版）
+    //   macOS    Xcode 的 Apple clang——Xcode 本来就躲不掉，不另发
+    #[test]
+    fn 两个平台自带_clang() {
+        for (host, 组件) in [(Host::WindowsX64, "llvm-mingw"), (Host::LinuxX64, "llvm")] {
+            let 有: Vec<_> = 某平台的(host).into_iter().map(|e| e.name).collect();
+            assert!(
+                有.contains(&组件),
+                "{} 上没有自带编译器 {}",
+                host.name(),
+                组件
+            );
+        }
+        // macOS 不该自带——多一份 clang 只会和 Apple 的 libc++ 头文件错配
+        let mac: Vec<_> = 某平台的(Host::MacosArm64)
+            .into_iter()
+            .map(|e| e.name)
+            .collect();
+        assert!(
+            !mac.iter().any(|n| n.starts_with("llvm")),
+            "macOS 上多了一份 LLVM，那边应该用 Xcode 的 Apple clang"
+        );
+    }
+
+    // 交叉编译的可行性是三家各管各的，改错了会出现「在 macOS 上试图编 Windows 版」。
+    #[test]
+    fn 桌面目标只能在同名宿主上构建() {
+        assert!(Target::MacosArm64.buildable_on(Host::MacosArm64));
+        assert!(!Target::MacosArm64.buildable_on(Host::LinuxX64));
+        assert!(!Target::WindowsX64.buildable_on(Host::MacosArm64));
+        // 安卓三家都行，iOS 只有 macOS
+        for host in Host::ALL {
+            assert!(Target::AndroidArm64.buildable_on(*host));
+        }
+        assert!(Target::IosArm64.buildable_on(Host::MacosArm64));
+        assert!(!Target::IosArm64.buildable_on(Host::WindowsX64));
+    }
 }

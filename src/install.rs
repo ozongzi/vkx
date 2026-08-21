@@ -548,8 +548,12 @@ pub fn status() -> Result<()> {
 
 /// 桌面构建：编译、着色器、链接、跑起来。
 const DESKTOP: &[&str] = &["cmake", "ninja", "slang", "vulkan-sdk", "libs"];
-/// macOS 上还要 MoltenVK 才有 Vulkan。
+/// macOS 上还要 MoltenVK 才有 Vulkan；编译器用 Xcode 的，vkx 装不了也不列。
 const MACOS_EXTRA: &[&str] = &["moltenvk"];
+/// Windows 和 Linux 的 C++ 编译器由 SDK 自带，缺了就什么都编不了。
+/// 不列在这里的话，预检会放行，要到 CMake 配置期才炸——那个错看不出该补什么。
+const WINDOWS_EXTRA: &[&str] = &["llvm-mingw"];
+const LINUX_EXTRA: &[&str] = &["llvm"];
 /// 出安卓包那一整套。
 const ANDROID: &[&str] = &[
     "jdk",
@@ -563,10 +567,46 @@ const ANDROID: &[&str] = &[
 
 fn desktop_set(host: Host) -> Vec<&'static str> {
     let mut v = DESKTOP.to_vec();
-    if host == Host::MacosArm64 {
-        v.extend_from_slice(MACOS_EXTRA);
-    }
+    v.extend_from_slice(match host {
+        Host::MacosArm64 => MACOS_EXTRA,
+        Host::WindowsX64 => WINDOWS_EXTRA,
+        Host::LinuxX64 => LINUX_EXTRA,
+    });
     v
+}
+
+#[cfg(test)]
+mod tests {
+    use super::desktop_set;
+    use crate::sdk::Host;
+
+    // 预检清单里的名字必须在组件表里存在，否则 require() 会当成「vkx 自己写错了」
+    // 直接报错——那是发布之后才会被学员撞见的。
+    #[test]
+    fn 桌面预检的组件名都是真的() {
+        for host in Host::ALL {
+            for name in desktop_set(*host) {
+                assert!(
+                    crate::sdk::entries(*host).any(|e| e.name == name),
+                    "{} 的桌面清单里有个不存在的组件：{}",
+                    host.name(),
+                    name
+                );
+            }
+        }
+    }
+
+    // 两个自带编译器的平台，编译器必须在预检里。macOS 用 Xcode 的，不该列。
+    #[test]
+    fn 预检包含自带的编译器() {
+        assert!(desktop_set(Host::WindowsX64).contains(&"llvm-mingw"));
+        assert!(desktop_set(Host::LinuxX64).contains(&"llvm"));
+        assert!(
+            !desktop_set(Host::MacosArm64)
+                .iter()
+                .any(|n| n.starts_with("llvm"))
+        );
+    }
 }
 
 /// 桌面构建之前查一遍。

@@ -24,7 +24,6 @@ const TOPICS: &[(&str, &str, &str)] = &[
         "工程根目录下的 vkx.toml 是唯一需要你编辑的配置文件。\n\n\
          [project]  name / package_id / version\n\
          [libs]     要从源码编的库开关\n\
-         [ios]      development_team\n\n\
          CMakeLists.txt 由 vkx 生成到 target/，不要手改。",
     ),
     (
@@ -42,7 +41,9 @@ const TOPICS: &[(&str, &str, &str)] = &[
         "1. 装完整版 Xcode（不是命令行工具），并在 Settings → Components 里装 iOS 平台\n\
          2. sudo xcode-select -s /Applications/Xcode.app\n\
          3. 模拟器：vkx run --target ios\n\
-         4. 真机：在 vkx.toml 的 [ios] 里填 development_team，然后 vkx dist --target ios-device",
+         4. 真机：vkx build --target ios-device 生成 Xcode 工程，用 Xcode 打开\n\n\
+         vkx 到「生成 Xcode 工程」为止。签名、连真机、Archive 上架都在 Xcode 里做——\n\
+         那些事绑 Apple 账号，格式也跟着 Xcode 版本变，vkx 发出去就不再更新了。",
     ),
     (
         "install",

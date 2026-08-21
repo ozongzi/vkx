@@ -9,8 +9,6 @@ pub struct Project {
     pub package_id: String,
     /// 发布版本号，用于 vkx dist 的包名。
     pub version: String,
-    /// vkx.toml 里 [ios] development_team，填了才能构建 iOS 真机包。
-    pub development_team: Option<String>,
     /// [libs] 里被打开的、要从源码编的库。
     pub libs: Vec<String>,
 }
@@ -63,7 +61,6 @@ impl Project {
         let package_id = value_of(&text, "project", "package_id")
             .unwrap_or_else(|| format!("com.example.{name}"));
         let version = value_of(&text, "project", "version").unwrap_or_else(|| "0.1.0".to_string());
-        let development_team = value_of(&text, "ios", "development_team");
         let libs = SOURCE_LIBS
             .iter()
             .filter(|lib| value_of(&text, "libs", lib.key).as_deref() == Some("true"))
@@ -75,7 +72,6 @@ impl Project {
             name,
             package_id,
             version,
-            development_team,
             libs,
         })
     }
