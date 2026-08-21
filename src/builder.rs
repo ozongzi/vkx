@@ -199,11 +199,11 @@ pub fn run(project: &Project, profile: Profile, args: &[String]) -> Result<i32> 
                 let separator = if cfg!(windows) { ";" } else { ":" };
                 format!(
                     "{}{separator}{}",
-                    value.display(),
+                    toolchain::native_path(&value),
                     existing.to_string_lossy()
                 )
             }
-            _ => value.display().to_string(),
+            _ => toolchain::native_path(&value),
         };
         command.env(key, merged);
     }

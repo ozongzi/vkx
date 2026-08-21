@@ -57,6 +57,30 @@ pub fn cmake_path(path: &Path) -> String {
     }
 }
 
+/// 把路径统一成当前平台的原生分隔符。Windows 上就是全部换成反斜杠。
+///
+/// 起因是 Windows 的 `LoadLibraryEx`：带 `LOAD_LIBRARY_SEARCH_*` 标志时它**不接受
+/// 正斜杠**，直接返回 ERROR_INVALID_PARAMETER(87)。而 Vulkan 加载器正是这么调的，
+/// 于是 `VK_LAYER_PATH` 里只要混进一个正斜杠，校验层就加载不了——报出来还是
+/// 一句和路径毫无关系的 `VK_ERROR_OUT_OF_HOST_MEMORY`。
+///
+/// 混合分隔符很容易出现：`vkx_home()` 来自 USERPROFILE（反斜杠），后面
+/// `.join("sdk/vulkan/vulkan")` 拼的是字面量（正斜杠），拼出来就是
+/// `C:\Users\me\.vkx\sdk/vulkan/vulkan`。Windows API 大多不在乎，偏偏这个在乎。
+pub fn native_path(path: &Path) -> String {
+    let text = path.display().to_string();
+    if cfg!(windows) {
+        windows_native_text(&text)
+    } else {
+        text
+    }
+}
+
+/// 摘前缀 + 正斜杠换反斜杠。
+fn windows_native_text(text: &str) -> String {
+    strip_verbatim(text).replace('/', "\\")
+}
+
 /// 摘掉 Windows 的 `\\?\` 扩展长度前缀，别的原样返回。
 ///
 /// `Path::canonicalize()` 在 Windows 上一律返回这种前缀。它对 Win32 API 有用
@@ -456,7 +480,7 @@ pub fn xcode_developer_dir() -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{strip_verbatim, windows_cmake_text};
+    use super::{strip_verbatim, windows_cmake_text, windows_native_text};
 
     #[test]
     fn 扩展长度前缀被摘掉() {
@@ -466,6 +490,17 @@ mod tests {
         // 没有前缀的原样返回
         assert_eq!(strip_verbatim(r"D:\client"), r"D:\client");
         assert_eq!(strip_verbatim("/Users/me/.vkx"), "/Users/me/.vkx");
+    }
+
+    #[test]
+    fn 交给加载器的路径没有正斜杠() {
+        // Windows 的 LoadLibraryEx 带 LOAD_LIBRARY_SEARCH_* 时正斜杠会报 87，
+        // 而 vkx_home() 是反斜杠、join 的字面量是正斜杠，天然会混。
+        assert_eq!(
+            windows_native_text(r"C:\Users\me\.vkx\sdk/vulkan/vulkan\share/vulkan/explicit_layer.d"),
+            r"C:\Users\me\.vkx\sdk\vulkan\vulkan\share\vulkan\explicit_layer.d"
+        );
+        assert!(!windows_native_text(r"C:\Users\me\.vkx\sdk/vulkan").contains('/'));
     }
 
     #[test]
