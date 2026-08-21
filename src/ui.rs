@@ -98,6 +98,21 @@ pub fn progress(done: u64, total: u64) {
     let _ = std::io::stderr().flush();
 }
 
+/// 进度条收尾：先按满格补画一次，再换行。
+///
+/// 不补这一下，进度条经常停在 97%、98% 就不动了，两个原因叠在一起：
+///
+///   · 刷新是按 4 MB 节流的（刷太勤反而拖慢解包），最后那段不足 4 MB 的残量
+///     不会触发重画，最终画面永远差着「最后一次刷新到结尾」那一段。
+///   · zip 那条路拿「各条目压缩后大小之和」跟「整个包的文件长度」比，本来就
+///     差着局部头和中央目录那些字节，就算每字节都刷也凑不满 100%。
+///
+/// 收尾时直接按满格画一次，两个原因一起解决。
+pub fn progress_finish(label: &str, total: u64) {
+    progress_labeled(label, total, total);
+    progress_done();
+}
+
 /// 进度条画完了，换行让后面的输出从头开始。
 pub fn progress_done() {
     use std::io::IsTerminal;

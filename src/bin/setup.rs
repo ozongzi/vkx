@@ -34,6 +34,15 @@ const HOST: &str = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
 };
 
 const EXE: &str = if cfg!(windows) { "vkx.exe" } else { "vkx" };
+/// 让 PATH 在**当前这个** shell 里立刻生效的那一句。
+///
+/// 进程改不了父 shell 的环境变量——这是操作系统的规矩，装完就自动生效做不到。
+/// 能做的是把这一句现成地摆出来，省得读者去翻文档，或者被迫重开一个终端。
+const ACTIVATE: &str = if cfg!(windows) {
+    r#"$env:Path += ";$env:USERPROFILE\.vkx\bin""#
+} else {
+    r#"export PATH="$HOME/.vkx/bin:$PATH""#
+};
 
 fn die(what: &str) -> ! {
     eprintln!();
@@ -98,11 +107,17 @@ fn main() {
     run(&vkx, &["doctor"]);
 
     println!();
-    println!("装好了。开一个新终端，然后：");
+    println!("装好了。当前这个终端里先跑一句，让 PATH 立刻生效：");
     println!();
-    println!("    vkx new mygame");
-    println!("    cd mygame");
+    println!("    {ACTIVATE}");
+    println!();
+    println!("然后：");
+    println!();
+    println!("    vkx new client");
+    println!("    cd client");
     println!("    vkx run");
+    println!();
+    println!("（PATH 已经写进配置了，以后新开的终端不用再跑那一句。）");
     println!();
     println!("要卸载：vkx self uninstall");
     wait_if_double_clicked();

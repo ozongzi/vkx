@@ -185,7 +185,7 @@ fn unpack(archive: &Path, into: &Path, format: Format) -> Result<()> {
             let r = tar::Archive::new(stream)
                 .unpack(into)
                 .context(Code::MissingComponent, "解包", "安装包可能损坏，重新下载");
-            ui::progress_done();
+            ui::progress_finish("解包", total);
             r
         }
     }
@@ -256,7 +256,7 @@ fn unpack_zip(archive: &Path, into: &Path) -> Result<()> {
             let _ = std::fs::set_permissions(&out, std::fs::Permissions::from_mode(mode));
         }
     }
-    ui::progress_done();
+    ui::progress_finish("解包", total);
     Ok(())
 }
 
@@ -412,7 +412,7 @@ pub fn install_from(bundle: &Path, force: bool, with_path: bool) -> Result<()> {
                     ui::progress_labeled("取出", copied, expect);
                 }
             }
-            ui::progress_done();
+            ui::progress_finish("取出", expect);
             hasher.finalize().to_hex().to_string()
         };
         if got != entry.blake3 {
@@ -760,7 +760,7 @@ pub fn path_add() -> Result<()> {
                 format!("手动把 {} 加进 PATH", bin.display()),
             ));
         }
-        ui::step("已把 ~/.vkx\\bin 加进用户 PATH（新开的终端才生效）");
+        ui::step("已把 ~/.vkx\\bin 加进用户 PATH");
         return Ok(());
     }
 
@@ -798,10 +798,7 @@ pub fn path_add() -> Result<()> {
         if touched.is_empty() {
             ui::info("shell 配置里已经有 vkx 的 PATH 了。");
         } else {
-            ui::step(&format!(
-                "已把 ~/.vkx/bin 加进 {}（新开的终端才生效）",
-                touched.join("、")
-            ));
+            ui::step(&format!("已把 ~/.vkx/bin 加进 {}", touched.join("、")));
         }
         Ok(())
     }
