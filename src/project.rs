@@ -400,7 +400,10 @@ pub const DEPENDENCIES: &[Dependency] = &[
         requires: &[],
         guard: "",
         config_mode: true,
-        about: "TLS，给 cpp-httplib 当后端",
+        // 曾经写的是「给 cpp-httplib 当后端」，那是错的：cpp-httplib 只认
+        // OpenSSL，从来没有 mbedTLS 后端。留着这个库是给以后可能要的轻量
+        // TLS 场景（比如嵌入式那侧），目前工程里没人链它。
+        about: "轻量 TLS。目前没有依赖它，留作备选",
     },
     Dependency {
         name: "OpenSSL",
@@ -455,6 +458,17 @@ pub const DEPENDENCIES: &[Dependency] = &[
         guard: "",
         config_mode: true,
         about: "HTTP 客户端和服务端（纯头文件）",
+    },
+    Dependency {
+        name: "SQLite",
+        package: "SQLite3",
+        targets: &["SQLite::SQLite3"],
+        requires: &[],
+        guard: "",
+        // CMake 自带 FindSQLite3 模块（不是 CONFIG 包），它会导出
+        // SQLite::SQLite3 这个 imported target。
+        config_mode: false,
+        about: "嵌入式 SQL 数据库（单文件、无服务进程）",
     },
     Dependency {
         name: "stb",
