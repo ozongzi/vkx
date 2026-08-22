@@ -607,6 +607,28 @@ mod tests {
         }
     }
 
+    // path_add 的判据必须是「配置文件里有没有那行」，不能是「当前进程的 PATH
+    // 里有没有」。这两件事会分家：装完按提示 export 过的那个终端里，环境变量有
+    // 而配置文件没有（self uninstall 只删配置文件那行）。按环境变量判的话，
+    // 「卸载后在同一个终端重装」会被骗过去，配置文件里那行再也回不来——而当前
+    // 终端一切正常，要到下次开终端才发现 vkx 不见了。这个坑真踩过。
+    #[test]
+    fn 写_path_不看环境变量() {
+        let src = include_str!("install.rs");
+        let start = src.find("pub fn path_add()").expect("path_add 没了？");
+        let end = src[start..]
+            .find("\npub fn path_remove")
+            .map(|i| start + i)
+            .unwrap_or(src.len());
+        let body = &src[start..end];
+        assert!(
+            !body.contains("std::env::var_os(\"PATH\")"),
+            "path_add 又开始看 PATH 环境变量了——判据必须是配置文件的内容"
+        );
+        // 逐文件判重的记号还在
+        assert!(body.contains("old.contains(MARK)"), "按记号判重那段没了");
+    }
+
     // 安卓那支有两样不在 libs/ 里、很容易漏进预检的东西：上游的 SDL3 .aar，
     // 和 Gradle 的依赖仓库。漏了的话报错要等到 Gradle 那一步，看不出该补什么。
     #[test]
@@ -848,16 +870,16 @@ fn bin_dir() -> PathBuf {
     vkx_home().join("bin")
 }
 
-/// 把 ~/.vkx/bin 加进 PATH。已经在了就什么都不做。
+/// 把 ~/.vkx/bin 写进 shell 配置。已经写过的文件跳过。
+///
+/// 判据是**配置文件里有没有那行**，不是当前进程的 PATH 环境变量里有没有。
+/// 这两件事会分家：装完之后按提示 `export PATH=...` 的那个终端里，环境变量有
+/// 而配置文件可能没有——`vkx self uninstall` 正是只删配置文件那行。于是
+/// 「卸载后在同一个终端重装」会被环境变量骗过去，配置文件里那行再也回不来，
+/// 而当前终端一切正常，要到下次开终端才发现 vkx 不见了。
 pub fn path_add() -> Result<()> {
     let bin = bin_dir();
-    if std::env::var_os("PATH")
-        .map(|p| std::env::split_paths(&p).any(|d| d == bin))
-        .unwrap_or(false)
-    {
-        ui::info("~/.vkx/bin 已经在 PATH 里了。");
-        return Ok(());
-    }
+    let _ = &bin;
 
     #[cfg(windows)]
     {
