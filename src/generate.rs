@@ -177,12 +177,35 @@ if(ANDROID)
         set(VKX_SDK_LIBS \"${{VKX_SDK_LIBS_ROOT}}/android-x64\")
     endif()
 elseif(IOS)
-    set(VKX_SDK_LIBS \"${{VKX_SDK_LIBS_ROOT}}/ios-arm64\")
+    # 真机和模拟器是两个平台，目标文件不能混链——ld 会直接报
+    # 「building for iOS-simulator, but linking in object file built for iOS」。
+    # CMAKE_OSX_SYSROOT 由 vkx 按 --target 传进来（见 mobile.rs）。
+    if(CMAKE_OSX_SYSROOT MATCHES \"simulator\")
+        set(VKX_SDK_LIBS \"${{VKX_SDK_LIBS_ROOT}}/ios-simulator-arm64\")
+    else()
+        set(VKX_SDK_LIBS \"${{VKX_SDK_LIBS_ROOT}}/ios-arm64\")
+    endif()
 else()
     set(VKX_SDK_LIBS \"${{VKX_SDK_LIBS_ROOT}}/{host_dir}\")
 endif()
 if(EXISTS \"${{VKX_SDK_LIBS}}\")
     list(APPEND CMAKE_PREFIX_PATH \"${{VKX_SDK_LIBS}}\")
+endif()
+
+# 交叉编译时还要再说一遍。
+#
+# NDK 和 CMake 的 iOS 支持都会把 find_package 关在 sysroot 里
+# （CMAKE_FIND_ROOT_PATH_MODE_*=ONLY），于是上面那句 CMAKE_PREFIX_PATH 白设——
+# 报出来是「Could not find a package configuration file provided by
+# VulkanHeaders」，看不出是被搜索范围挡住了。把 libs 目录也算成搜索根。
+#
+# 用 APPEND 而不是覆盖：安卓的 SDL3 来自上游 .aar（Gradle 用 prefab 准备好，
+# 路径由 AGP 塞在前面），我们这份要排在它后面，别把它顶掉。
+if(ANDROID OR IOS)
+    list(APPEND CMAKE_FIND_ROOT_PATH \"${{VKX_SDK_LIBS}}\")
+    set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE BOTH)
+    set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE BOTH)
+    set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY BOTH)
 endif()
 
 # ---------------------------------------------------------------------------

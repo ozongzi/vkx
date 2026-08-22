@@ -263,6 +263,20 @@ pub const ENTRIES: &[Entry] = &[
         origin: "vkx-libs 仓库的 CI 产出；源码和构建脚本见 libs/tools/",
     },
     Entry {
+        name: "libs-ios-simulator-arm64",
+        host: Host::MacosArm64,
+        file: "libs-ios-simulator-arm64.tar.zst",
+        format: Format::TarZst,
+        dest: "libs/ios-simulator-arm64",
+        pick: "",
+        blake3: "1e452eceb2437544b461fe69e868b1b149d016f17efcf5ec3d26c14a173630a6",
+        about: "iOS 模拟器的预编译库",
+        // 真机和模拟器是两个平台，目标文件不能混链——ld 会直接报
+        // 「building for iOS-simulator, but linking in object file built for iOS」。
+        // 所以各要一份。
+        origin: "vkx-libs 的构建脚本，见 libs/tools/",
+    },
+    Entry {
         name: "sdl3-android",
         host: Host::MacosArm64,
         file: "sdl3-android.tar",
@@ -891,19 +905,22 @@ mod tests {
         }
     }
 
-    // iOS 只能在 macOS 上构建，那份库也就只该出现在 macOS 的包里。
+    // iOS 只能在 macOS 上构建，那两份库也就只该出现在 macOS 的包里。
+    // 真机和模拟器各一份：目标文件不能混链，ld 会直接报
+    // 「building for iOS-simulator, but linking in object file built for iOS」。
     #[test]
-    fn ios_的库只在_macos_包里() {
-        for host in Host::ALL {
-            let has = 某平台的(*host)
-                .into_iter()
-                .any(|e| e.name == "libs-ios-arm64");
-            assert_eq!(
-                has,
-                *host == Host::MacosArm64,
-                "{} 上的 libs-ios-arm64 存在性不对",
-                host.name()
-            );
+    fn ios_的两份库只在_macos_包里() {
+        for want in ["libs-ios-arm64", "libs-ios-simulator-arm64"] {
+            for host in Host::ALL {
+                let has = 某平台的(*host).into_iter().any(|e| e.name == want);
+                assert_eq!(
+                    has,
+                    *host == Host::MacosArm64,
+                    "{} 上的 {} 存在性不对",
+                    host.name(),
+                    want
+                );
+            }
         }
     }
 

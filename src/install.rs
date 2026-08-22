@@ -665,7 +665,10 @@ mod tests {
         }
         let mut ios = desktop_set(Host::MacosArm64);
         ios.extend_from_slice(super::IOS_LIBS);
-        assert!(ios.contains(&"libs-ios-arm64"), "iOS 清单里没有它的库");
+        // 真机和模拟器各一份：目标文件不能混链，少哪一份都会在链接期才炸
+        for want in ["libs-ios-arm64", "libs-ios-simulator-arm64"] {
+            assert!(ios.contains(&want), "iOS 清单里没有 {want}");
+        }
     }
 }
 
@@ -684,8 +687,9 @@ pub fn require_android() -> Result<()> {
 }
 
 /// iOS 构建之前查一遍。Xcode 不在这里管——那个 vkx 装不了，`vkx doctor` 单独报。
-/// iOS 那份预编译库，只有 macOS 的包里有。
-const IOS_LIBS: &[&str] = &["libs-ios-arm64"];
+/// iOS 那两份预编译库，只有 macOS 的包里有。
+/// 真机和模拟器是两个平台，目标文件不能混链，所以各要一份。
+const IOS_LIBS: &[&str] = &["libs-ios-arm64", "libs-ios-simulator-arm64"];
 
 pub fn require_ios() -> Result<()> {
     let host = host()?;
