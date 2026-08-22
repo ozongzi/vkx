@@ -15,23 +15,36 @@ vkx run
 
 | 谁 | 干什么 |
 | --- | --- |
-| **离线安装包** | 一个开发平台一个 zip，里面是 vkx 二进制加它要的全部依赖（上游原包，没拆） |
-| **vkx** | 把安装包里的东西校验、解开、摆进 `~/.vkx`。解压、校验全在进程内，不依赖机器上有 unzip / tar / sha256sum |
+| **离线安装包** | 一个开发平台一个自解压程序，里面是 vkx 二进制加它要的全部依赖（上游原包，没拆） |
+| **安装包自己** | 双击或者命令行跑一下，它把里面的东西校验、解开、摆进 `~/.vkx`。解压、校验全在进程内，不依赖机器上有 unzip / tar / sha256sum |
 
 **vkx 不联网。** 它要的一切都在安装包里，依赖清单和每一样的 blake3 都编在二进制里。
 读者的机器上只会多出一个 `~/.vkx` 目录，删掉就等于卸载干净。
 
 ## 安装
 
-拿到对应平台的安装包，解开，用里面的 vkx 装自己：
+从 [Release 页面](https://github.com/ozongzi/vkx/releases/latest)下对应你机器的那一个，
+跑一下就装好了——它自己就是安装程序，不需要先解压、也不需要再执行别的命令。
+
+| 你的机器 | 下这个 | 大小 |
+| --- | --- | --- |
+| Windows（Intel/AMD 64 位） | `vkx-setup-windows-x64.exe` | 1.76 GiB |
+| Linux（Intel/AMD 64 位） | `vkx-setup-linux-x64` | 1.72 GiB |
+| macOS（Apple 芯片） | `vkx-setup-macos-arm64` | 1.94 GiB |
 
 ```sh
-unzip vkx-macos-arm64.zip
-./macos-arm64/vkx install vkx-macos-arm64.zip
+chmod +x vkx-setup-macos-arm64
+./vkx-setup-macos-arm64
 ```
 
-三个开发平台各一个包：`vkx-macos-arm64.zip`、`vkx-linux-x64.zip`、`vkx-windows-x64.zip`，
-各约 1.4–1.7 GB。装完把 vkx 二进制放进 PATH 就行。
+装完 vkx 就在 `~/.vkx/bin/vkx`，并且已经写进 PATH。
+
+第一次运行时系统会拦一下，因为这个包没有 Apple / 微软的开发者签名：
+
+- **macOS** 弹「Apple 无法验证……是否包含恶意软件」。系统设置 → 隐私与安全性，
+  往下翻到「已阻止使用」点「仍要打开」；或者摘掉隔离标记：
+  `xattr -d com.apple.quarantine vkx-setup-macos-arm64`
+- **Windows** SmartScreen 会警告但不拦，点「更多信息 → 仍要运行」。
 
 装的过程只补缺的：已经装好并且校验通过的直接跳过，所以重复执行是安全的，
 中断之后再跑一次就接着装。每一样在装之前都按 blake3 校验，对不上就不装、
@@ -76,7 +89,7 @@ $ vkx new
 
 ## 环境布局
 
-`vkx install` 把安装包里的东西摆成这个样子：
+安装包把里面的东西摆成这个样子：
 
 ```
 ~/.vkx/
@@ -91,7 +104,7 @@ $ vkx new
   sdk/sdl3-android/              SDL3 的安卓 .aar
 ```
 
-`sdk/` 下一个目录对应依赖表里的一个条目，`vkx install` 就是按这个对应关系解包的。
+`sdk/` 下一个目录对应依赖表里的一个条目，解包就是按这个对应关系走的。
 判定「已安装」= 目录在 + 戳在 + 戳的值和二进制里硬编码的一致。校验的是安装包里
 那个文件的 blake3，不是装完那棵树——树哈希每跑一次命令都要过 2.8 GB 的 NDK，
 不现实。`VKX_HOME` 可以整体换个位置。
@@ -164,6 +177,7 @@ cargo run -- new /tmp/demo
 | 平台 | 状态 |
 | --- | --- |
 | macOS (Apple Silicon) | 已验证：像素回读确认三角形；`.app` 在干净环境下用包内 MoltenVK 正常启动 |
-| iOS 模拟器 | 已验证：构建 → 安装 → 启动 → 截图确认。真机和上架走 Xcode，vkx 只生成工程 |
-| Android (arm64) | 已验证：签名 APK（apksigner 校验通过）+ AAB 产出；未在真机上跑过 |
-| Windows / Linux | 未验证 |
+| iOS（模拟器 / 真机） | 已验证：构建 → 安装 → 启动。真机和上架走 Xcode，vkx 只生成工程 |
+| Android (arm64 / x64) | 已验证：签名 APK（apksigner 校验通过）+ AAB 产出，真机和模拟器都跑过 |
+| Windows (x64) | 已验证：安装、建工程、构建、运行 |
+| Linux (x64) | 已验证：安装、建工程、构建、运行 |
