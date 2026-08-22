@@ -10,7 +10,8 @@
 //!   sdk/toolchain/{cmake,ninja,slang,clang-format,llvm-mingw}
 //!   sdk/vulkan/{vulkan,moltenvk}
 //!   sdk/libs/<target>/{include,lib}                预编译库，一个 target 一份
-//!   sdk/sources/{jolt,gamenetworkingsockets}       要从源码编的那几个
+//!   sdk/maven/                                  安卓构建要的 Gradle 依赖
+//!   sdk/sdl3-android/                          SDL3 的安卓 .aar
 //!   sdk/android/{jdk,gradle,sdk}                   移动端打包用（暂未进包）
 
 use std::path::{Path, PathBuf};
