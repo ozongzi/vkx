@@ -1,6 +1,6 @@
 # vkx
 
-Vulkan + SDL3 跨平台游戏工程脚手架。一条命令建工程，一条命令跑起来，
+用 C++ 写 Vulkan 游戏的脚手架。一条命令建工程，一条命令跑起来，
 Windows / macOS / Linux / Android / iOS 同一套代码。
 
 ```sh
@@ -9,22 +9,13 @@ cd mygame
 vkx run
 ```
 
-屏幕上出现一个三角形，就说明环境齐了。
+屏幕上出现一个三角形，就说明环境齐了。这中间没让你装 CMake、装 Vulkan SDK、
+装 NDK、配环境变量——那些 vkx 都带着。
 
-## 分工
+## 装 vkx
 
-| 谁 | 干什么 |
-| --- | --- |
-| **离线安装包** | 一个开发平台一个自解压程序，里面是 vkx 二进制加它要的全部依赖（上游原包，没拆） |
-| **安装包自己** | 双击或者命令行跑一下，它把里面的东西校验、解开、摆进 `~/.vkx`。解压、校验全在进程内，不依赖机器上有 unzip / tar / sha256sum |
-
-**vkx 不联网。** 它要的一切都在安装包里，依赖清单和每一样的 blake3 都编在二进制里。
-读者的机器上只会多出一个 `~/.vkx` 目录，删掉就等于卸载干净。
-
-## 安装
-
-从 [Release 页面](https://github.com/ozongzi/vkx/releases/latest)下对应你机器的那一个，
-跑一下就装好了——它自己就是安装程序，不需要先解压、也不需要再执行别的命令。
+从 [Release 页面](https://github.com/ozongzi/vkx/releases/latest)下对应你机器的
+那一个，跑一下就装好了。它自己就是安装程序，不用先解压、也不用再执行别的命令。
 
 | 你的机器 | 下这个 | 大小 |
 | --- | --- | --- |
@@ -37,47 +28,33 @@ chmod +x vkx-setup-macos-arm64
 ./vkx-setup-macos-arm64
 ```
 
-装完 vkx 就在 `~/.vkx/bin/vkx`，并且已经写进 PATH。
+包大是因为里面装着编译器、CMake、Ninja、着色器编译器、Vulkan 一整套、
+Android 的 JDK 和 NDK，以及五个平台的预编译库。东西全在 `~/.vkx` 里，
+`vkx self uninstall` 删干净。
 
-第一次运行时系统会拦一下，因为这个包没有 Apple / 微软的开发者签名：
+**第一次运行系统会拦一下**，因为这个包没有 Apple / 微软的开发者签名：
 
 - **macOS** 弹「Apple 无法验证……是否包含恶意软件」。系统设置 → 隐私与安全性，
   往下翻到「已阻止使用」点「仍要打开」；或者摘掉隔离标记：
   `xattr -d com.apple.quarantine vkx-setup-macos-arm64`
-- **Windows** SmartScreen 会警告但不拦，点「更多信息 → 仍要运行」。
+- **Windows** SmartScreen 会警告但不拦，点「更多信息 → 仍要运行」
 
-装的过程只补缺的：已经装好并且校验通过的直接跳过，所以重复执行是安全的，
-中断之后再跑一次就接着装。每一样在装之前都按 blake3 校验，对不上就不装、
-不留半成品。
+有两样东西 vkx 给不了，得你自己装：
 
-`vkx doctor` 列出哪些装了、哪些没装。
-
-### 只有两样东西装不进 ~/.vkx
-
-| 缺什么 | 为什么 | 脚本会怎么做 |
+| 缺什么 | 什么时候要 | 怎么办 |
 | --- | --- | --- |
-| macOS 的 Xcode / 命令行工具 | Apple 的 SDK 不允许第三方再分发，iOS 构建也必须用 `xcodebuild` | 提示执行 `xcode-select --install` |
-| 显卡驱动里的 Vulkan ICD | Windows 的 `vulkan-1.dll`、Linux 的 ICD 都由驱动提供 | 提示更新驱动或装 `mesa-vulkan-drivers` |
+| Xcode 命令行工具 | 在 macOS 上编译任何东西 | `xcode-select --install` |
+| 显卡驱动里的 Vulkan | Windows / Linux 上运行 | 更新显卡驱动；Linux 上装 `mesa-vulkan-drivers` |
 
-其余的（C++ 编译器、CMake、Vulkan 相关的库和工具）都是可重定位的二进制，
-一律装进 `~/.vkx`。Windows 上统一用 llvm-mingw，不需要 Visual Studio——
-就算机器上装了也不用它：SDK 包里的预编译库是 llvm-mingw 编的，
-两种 ABI 混在一起会在链接期炸，而 MSVC 的工具集也不允许我们分发。
+不确定齐没齐就跑 `vkx doctor`，它逐项列出来。
 
-## 命令
+## 建一个工程
 
-| 命令 | 作用 |
-| --- | --- |
-| `vkx new [名字] [--package-id <包名>]` | 生成工程，顺带生成 Android release 签名密钥 |
-| `vkx build [--release] [--target <平台>]` | 构建 |
-| `vkx run [--release] [--target <平台>]` | 构建并运行 |
-| `vkx dist [--target <平台>]` | 打出可以直接分发的安装包 |
-| `vkx fmt [--check]` | 按工程根的 `.clang-format` 格式化 `src/`；`--check` 只检查不改，给 CI 用 |
-| `vkx clean` | 删掉 build/ |
+```sh
+vkx new mygame
+```
 
-`--target` 可选：`desktop`（默认）、`android`、`ios`（模拟器）、`ios-device`。
-
-工程名和包名都是必填的。命令行上没写的会在终端里逐个问，回车即接受默认值：
+不写参数就在终端里逐个问，回车接受默认值：
 
 ```
 $ vkx new
@@ -85,99 +62,211 @@ $ vkx new
   包名 (Android / iOS) (com.example.mygame) › com.moba.mygame
 ```
 
-非交互环境（管道、CI）不会卡住等输入，而是直接报错，要求把两个参数写全。
+写脚本或者在 CI 里跑要写全，它不会卡住等输入：
 
-## 环境布局
-
-安装包把里面的东西摆成这个样子：
-
-```
-~/.vkx/
-  bin/vkx
-  sdk/.installed/<组件>          装好的戳，内容是那个组件的 blake3
-  sdk/toolchain/{cmake,ninja,slang,clang-format}
-  sdk/vulkan/{vulkan,moltenvk}
-  sdk/toolchain/{llvm-mingw,llvm} Windows 和 Linux 自带的 C++ 编译器
-  sdk/libs/<target>/             预编译库，一个 target 一份
-  sdk/android/{jdk,gradle,sdk}   JDK / Gradle / Android SDK / NDK
-  sdk/maven/                     安卓构建要的 Gradle 依赖（AGP 及其闭包）
-  sdk/sdl3-android/              SDL3 的安卓 .aar
+```sh
+vkx new mygame --package-id com.moba.mygame
 ```
 
-`sdk/` 下一个目录对应依赖表里的一个条目，解包就是按这个对应关系走的。
-判定「已安装」= 目录在 + 戳在 + 戳的值和二进制里硬编码的一致。校验的是安装包里
-那个文件的 blake3，不是装完那棵树——树哈希每跑一次命令都要过 2.8 GB 的 NDK，
-不现实。`VKX_HOME` 可以整体换个位置。
+加 `--server` 建服务端工程：一个 HTTP 服务，没有窗口也没有渲染，
+依赖里也就没有 SDL 和 Vulkan。
 
-`sdk/vulkan/vulkan` 里是 Vulkan loader 和 khronos 校验层。校验层不在显卡驱动里，
-Debug 构建要靠它报出用错 Vulkan 的地方，所以得自己分发。上游只有 LunarG 的整包
-（每平台 274~493 MB，macOS / Windows 版还是安装脚本跑不动的 Qt 安装器），
-于是当初挑出需要的几个文件重打包成几十 MB，现在这份就在离线安装包里。
+生成的工程长这样：
 
-### 运行期的环境变量
+```
+mygame/
+  vkx.toml          唯一需要你编辑的配置
+  src/              你的代码。默认放着一份能跑的 Vulkan 三角形
+  shaders/          着色器（Slang）
+  android/  ios/  macos/   各平台的工程壳，一般不用动
+  .clang-format     vkx fmt 用的格式规则
+  CMakePresets.json 生成的，VS Code / CLion 打开工程目录就能认出构建配置
+  target/           构建产物，构建后才出现，整个不进版本库
+  dist/             vkx dist 的产出，同样是生成的
+```
 
-`vkx run` 启动程序前会补几个变量，指向 SDK 里的 Vulkan（见
-`toolchain::vulkan_runtime_env`）。macOS 上设 `SDL_VULKAN_LIBRARY`（loader 的
-绝对路径）和 `VK_DRIVER_FILES`：那是唯一连 loader 都没有的平台，不明确指定的话
-SDL 会退而直接加载 MoltenVK，绕过 loader，校验层就无从插入——症状是程序照常
-运行，只多一行「校验层不可用」。
+`android/keystore/release.jks` 是 `vkx new` 顺手生成的 Android 签名密钥
+（口令在 `android/keystore.properties`，两个都在 `.gitignore` 里）。所以你一上来
+就能出签名好的 APK。真要上架商店，换成你自己保管的正式密钥。
 
-**不能用 `DYLD_LIBRARY_PATH`。** macOS 的 SIP 会在执行受保护的系统二进制时把
-`DYLD_*` 剥掉，中间隔一层 `/usr/bin/env` 或 `/bin/sh` 就没了。
+## 日常
 
-Linux 和 Windows 的 loader 由显卡驱动提供，只补校验层的目录。
+```sh
+vkx build              # 编译
+vkx run                # 编译并运行
+vkx run -- --level 3   # -- 之后的参数原样传给你的程序（桌面）
+vkx fmt                # 按 .clang-format 格式化 src/
+vkx clean              # 删掉构建产物
+```
 
-## 分发
+加 `--release` 出优化过的版本。加 `--target` 换平台：
 
-`vkx dist` 出的是能直接发给别人的东西，全部落在工程的 `dist/` 下：
+| `--target` | 干什么 |
+| --- | --- |
+| `desktop`（默认） | 本机跑 |
+| `android` | 编译、装到连着的设备或模拟器、启动 |
+| `ios` | 编译、装进 iOS 模拟器、启动 |
+| `ios-device` | 生成 Xcode 工程就停手，签名和真机调试在 Xcode 里做 |
+
+## 加一个库
+
+最常做的一件事，所以单独说。
+
+```sh
+vkx deps          # 看有哪些
+vkx add SQLite    # 加一个
+vkx remove SQLite # 去掉
+```
+
+```
+==> 依赖（vkx.toml 的 dependencies）
+    ● SDL3                   窗口、输入、音频、文件对话框
+    ● Vulkan                 Vulkan 头文件和 volk 函数指针加载
+    ○ zlib                   压缩
+    ○ FreeType               字体栅格化
+    ○ mbedTLS                轻量 TLS
+    ○ OpenSSL                加密
+    ○ protobuf               序列化
+    ○ GameNetworkingSockets  局内实时传输（UDP、加密、P2P 打洞）
+    ○ Jolt                   物理引擎
+    ○ GLM                    向量和矩阵（纯头文件）
+    ○ cpp-httplib            HTTP 客户端和服务端（纯头文件）
+    ○ SQLite                 嵌入式 SQL 数据库（单文件、无服务进程）
+    ○ stb                    PNG / JPEG 编解码（纯头文件）
+
+    ● 已启用   ○ 未启用
+```
+
+加完直接 `#include` 就行，头文件路径和链接 vkx 都安排好了：
+
+```cpp
+#include <sqlite3.h>
+#include <httplib.h>
+#include <glm/glm.hpp>
+```
+
+**这些库全是预编译好的**，随安装包一起装在你机器上了。所以 `vkx add`
+不下载、不编译——改这个列表不影响构建时间，只决定链哪些库、暴露哪些头文件。
+不用为「以后可能要用」提前加，用到再加，一秒钟的事。
+
+依赖之间的关系 vkx 自己补。`vkx add GameNetworkingSockets` 之后 `vkx.toml` 里
+只多了这一行，但构建时 zlib、OpenSSL、protobuf 会一起链进来——你不用去查它要什么。
+
+五个平台的库都是同一套源码、同一套工具链编的，所以在 macOS 上 `vkx add Jolt`，
+`--target android` 照样能编。
+
+## 加代码和着色器
+
+**源文件**：往 `src/` 里放 `.cpp` / `.h`，递归收集，不用改任何配置。
+
+**着色器**：往 `shaders/` 里放 `.slang`。带 `[shader("vertex")]`、
+`[shader("fragment")]` 标注的入口点会被自动找出来，编成 SPIR-V，再转成头文件
+嵌进可执行文件——所以运行时不用带着 `.spv` 到处跑。
+
+写在 `shaders/rect.slang` 里：
+
+```slang
+[shader("vertex")]
+VertexOutput vertex_main(...) { ... }
+```
+
+C++ 这边就能直接用：
+
+```cpp
+#include "rect_vert.spv.h"   // 里面是 RECT_VERT_SPV 和 RECT_VERT_SPV_SIZE
+```
+
+加一个入口点自动多一条规则，同样不用改配置。
+
+## vkx.toml
+
+工程根目录下唯一需要你编辑的文件：
+
+```toml
+[project]
+name = "mygame"                    # 可执行文件名
+package_id = "com.moba.mygame"     # Android 的 applicationId / iOS 的 bundle id
+version = "0.1.0"                  # dist 的包名和各平台版本号都取它
+dependencies = ["SDL3", "Vulkan"]  # vkx add / remove 改的就是这一行
+
+[vkx]
+version = "0.4.1"                  # 生成这个工程时用的 vkx 版本
+```
+
+`CMakeLists.txt` 由 vkx 生成到 `target/`，**别手改**，每次构建都会覆盖。
+它表达不了的东西写进工程根目录的 `extra.cmake`，会在末尾被 `include`。
+
+## 发布
+
+```sh
+vkx dist                    # 本机桌面
+vkx dist --target android
+```
+
+产物全部落在工程的 `dist/` 下：
 
 | 平台 | 产物 | 说明 |
 | --- | --- | --- |
-| macOS | `.app` + `.dmg` | MoltenVK 放进 `Contents/Frameworks/`——SDL 的默认搜索路径第一项就是这里，所以不需要任何额外代码或环境变量；ad-hoc 签名（上架或免右键打开还需公证） |
-| Windows | `.zip` | 可执行文件静态链接，解压即用 |
+| macOS | `.app` + `.dmg` | MoltenVK 打包在 `.app` 里，对方机器上什么都不用装 |
+| Windows | `.zip` | 静态链接，解压即用 |
 | Linux | `.tar.gz` | 同上 |
-| Android | 签名 `.apk` + `.aab` | APK 直接安装，AAB 上架 Google Play |
-| iOS | —— | 不由 vkx 出。`vkx build --target ios-device` 生成 Xcode 工程，Archive 在 Xcode 里做 |
+| Android | 签名 `.apk` + `.aab` | APK 直接装，AAB 上架 Google Play |
+| iOS | —— | 见下 |
 
-## 移动端开箱即用
+**iOS 不由 vkx 打包。** `vkx build --target ios-device` 生成 `.xcodeproj`
+就停手，用 Xcode 打开，选 Team 打开自动签名，就能连真机跑、也能 Archive 上架。
 
-**Android 签名**：`vkx new` 时就用 keytool 生成 `android/keystore/release.jks`
-和随机口令，写进 `android/keystore.properties`（两者都在 .gitignore 里）。
-所以 `vkx build --release --target android` 直接产出签名好的 APK。
-上架商店请换成你自己保管的正式密钥。
-
-**Xcode 工程**：`vkx build --target ios-device` 生成 `.xcodeproj` 就停手
-（路径会打印出来）。用 Xcode 打开，在里面选 Team 打开自动签名，就能连真机跑、
-也能 Archive 上架。
-
-vkx 不代劳签名和出 `.ipa`：那些事绑 Apple 账号（证书、描述文件、团队 ID），
+不代劳是有意的：签名绑着 Apple 账号（证书、描述文件、团队 ID），
 `exportOptions.plist` 的格式还跟着 Xcode 版本变。vkx 发出去之后不再更新，
-代劳只会留下一个修不好的报错。模拟器那条内循环不受影响：`vkx run --target ios`
-照旧编译、安装、启动。
+代劳只会给你留一个修不好的报错。模拟器那条内循环不受影响，
+`vkx run --target ios` 照旧编译、安装、启动。
 
-## 开发
+## 出问题的时候
 
 ```sh
-cargo build
-cargo run -- new /tmp/demo
+vkx doctor       # 环境齐不齐，缺什么怎么补
+vkx help         # 列出所有专题和错误码
+vkx help E0003   # 展开某个错误码
+vkx help ios     # 展开某个专题
 ```
 
-工程模版在 `template/`，用 `include_dir!` 在编译期整个嵌进二进制。
-`build.rs` 声明了对该目录的依赖，改完模版直接 `cargo build` 就会重新嵌入。
+报错都带一个 `E00xx` 编号，`vkx help E00xx` 有完整解释和处理办法。
+专题目前有 `manifest`、`toolchain`、`ios`、`install`、`version`。
 
-发版：打一个 `v*` 标签，`.github/workflows/release.yml` 为三个开发平台交叉编译
-出裸二进制，上传到 GitHub Release。CI 只做这一件事——不打包、不校验。依赖随
-离线安装包走，和这条流水线无关。
+## 几个「为什么」
 
-依赖表在 `src/sdk.rs`：一个 vkx 版本对应一套确定的依赖，版本钉死，出 CVE 也不动。
-换依赖就发新版 vkx。
+**为什么不联网。** vkx 要的一切都在安装包里，依赖清单和每一样的校验值都编在
+二进制里。装完之后建工程、构建、运行、打包全程不出网——所以三年后照样能跑，
+不会因为某个上游改了地址就构建不动。
+
+**为什么依赖不追最新版。** 一个 vkx 版本对应一套确定的依赖，版本钉死，出了
+CVE 也不动，要换就发新版 vkx。这样同一个 vkx 版本在任何人的机器上、任何时间
+编出来的东西都一样。
+
+**为什么装在 `~/.vkx`。** 不碰系统目录，不要管理员权限，删掉那个目录就等于
+卸载干净。想装到别处设 `VKX_HOME`。
+
+**为什么 Windows 上不用 Visual Studio。** 那边用的是 llvm-mingw。三个桌面平台
+用的都是 clang，语言扩展、警告、ABI 的脾气一致，少一整套要维护的差异——
+代价是你得用 mingw 那套而不是 MSVC。
 
 ## 平台验证状态
 
 | 平台 | 状态 |
 | --- | --- |
 | macOS (Apple Silicon) | 已验证：像素回读确认三角形；`.app` 在干净环境下用包内 MoltenVK 正常启动 |
-| iOS（模拟器 / 真机） | 已验证：构建 → 安装 → 启动。真机和上架走 Xcode，vkx 只生成工程 |
+| iOS（模拟器 / 真机） | 已验证：构建 → 安装 → 启动 |
 | Android (arm64 / x64) | 已验证：签名 APK（apksigner 校验通过）+ AAB 产出，真机和模拟器都跑过 |
 | Windows (x64) | 已验证：安装、建工程、构建、运行 |
 | Linux (x64) | 已验证：安装、建工程、构建、运行 |
+
+## 自己改 vkx
+
+```sh
+cargo build
+cargo run -- new /tmp/demo
+```
+
+工程模版在 `template/`，编译期整个嵌进二进制，改完 `cargo build` 就重新嵌入。
+依赖表在 `src/sdk.rs`。发版打一个 `v*` 标签，CI 交叉编译出三个平台的裸二进制；
+那三个 GB 级的离线安装包是另外拼的。
