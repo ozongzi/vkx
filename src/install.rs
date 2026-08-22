@@ -547,15 +547,23 @@ pub fn status() -> Result<()> {
 // 是同一份——两处各写一份，迟早对不上。
 
 /// 桌面构建：编译、着色器、链接、跑起来。
-const DESKTOP: &[&str] = &["cmake", "ninja", "slang", "vulkan-sdk", "libs"];
+const DESKTOP: &[&str] = &["cmake", "ninja", "slang", "vulkan-sdk"];
 /// macOS 上还要 MoltenVK 才有 Vulkan；编译器用 Xcode 的，vkx 装不了也不列。
 const MACOS_EXTRA: &[&str] = &["moltenvk"];
 /// Windows 和 Linux 的 C++ 编译器由 SDK 自带，缺了就什么都编不了。
 /// 不列在这里的话，预检会放行，要到 CMake 配置期才炸——那个错看不出该补什么。
-const WINDOWS_EXTRA: &[&str] = &["llvm-mingw"];
-const LINUX_EXTRA: &[&str] = &["llvm"];
+/// 每个平台还要带上自己那份预编译库。
+const MACOS_LIBS: &str = "libs-macos-arm64";
+const WINDOWS_EXTRA: &[&str] = &["llvm-mingw", "libs-windows-x64"];
+const LINUX_EXTRA: &[&str] = &["llvm", "libs-linux-x64"];
+/// 安卓那两个 ABI 的库，出安卓包时才要。
+const ANDROID_LIBS: &[&str] = &["libs-android-arm64", "libs-android-x64"];
 /// 出安卓包那一整套。
 const ANDROID: &[&str] = &[
+    "sdl3-android",
+    "maven",
+    "libs-android-arm64",
+    "libs-android-x64",
     "jdk",
     "gradle",
     "android-ndk",
@@ -572,6 +580,9 @@ fn desktop_set(host: Host) -> Vec<&'static str> {
         Host::WindowsX64 => WINDOWS_EXTRA,
         Host::LinuxX64 => LINUX_EXTRA,
     });
+    if host == Host::MacosArm64 {
+        v.push(MACOS_LIBS);
+    }
     v
 }
 
@@ -596,6 +607,24 @@ mod tests {
         }
     }
 
+    // 安卓那支有两样不在 libs/ 里、很容易漏进预检的东西：上游的 SDL3 .aar，
+    // 和 Gradle 的依赖仓库。漏了的话报错要等到 Gradle 那一步，看不出该补什么。
+    #[test]
+    fn 安卓预检包含_aar_和_maven() {
+        for host in Host::ALL {
+            let mut need = desktop_set(*host);
+            need.extend_from_slice(super::ANDROID);
+            for 必需 in ["sdl3-android", "maven"] {
+                assert!(
+                    need.contains(&必需),
+                    "{} 的安卓清单里没有 {}",
+                    host.name(),
+                    必需
+                );
+            }
+        }
+    }
+
     // 两个自带编译器的平台，编译器必须在预检里。macOS 用 Xcode 的，不该列。
     #[test]
     fn 预检包含自带的编译器() {
@@ -606,6 +635,37 @@ mod tests {
                 .iter()
                 .any(|n| n.starts_with("llvm"))
         );
+    }
+
+    // 预编译库按 target 分成了好几条，每个平台的桌面预检必须带上自己那份。
+    // 少了的话 find_package 会在 CMake 那边失败，报错看不出是库没装。
+    #[test]
+    fn 桌面预检带上本平台的库() {
+        for (host, want) in [
+            (Host::MacosArm64, "libs-macos-arm64"),
+            (Host::LinuxX64, "libs-linux-x64"),
+            (Host::WindowsX64, "libs-windows-x64"),
+        ] {
+            assert!(
+                desktop_set(host).contains(&want),
+                "{} 的桌面清单里没有 {}",
+                host.name(),
+                want
+            );
+        }
+    }
+
+    // 安卓要两个 ABI 的库，iOS 要它自己那份。
+    #[test]
+    fn 移动端预检带上对应的库() {
+        let mut android = desktop_set(Host::MacosArm64);
+        android.extend_from_slice(super::ANDROID);
+        for want in super::ANDROID_LIBS {
+            assert!(android.contains(want), "安卓清单里没有 {want}");
+        }
+        let mut ios = desktop_set(Host::MacosArm64);
+        ios.extend_from_slice(super::IOS_LIBS);
+        assert!(ios.contains(&"libs-ios-arm64"), "iOS 清单里没有它的库");
     }
 }
 
@@ -624,9 +684,14 @@ pub fn require_android() -> Result<()> {
 }
 
 /// iOS 构建之前查一遍。Xcode 不在这里管——那个 vkx 装不了，`vkx doctor` 单独报。
+/// iOS 那份预编译库，只有 macOS 的包里有。
+const IOS_LIBS: &[&str] = &["libs-ios-arm64"];
+
 pub fn require_ios() -> Result<()> {
     let host = host()?;
-    require(&desktop_set(host), "iOS 构建")
+    let mut need = desktop_set(host);
+    need.extend_from_slice(IOS_LIBS);
+    require(&need, "iOS 构建")
 }
 
 /// `vkx fmt` 之前查一遍。

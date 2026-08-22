@@ -1,17 +1,33 @@
 // Gradle 的工程结构和插件仓库配置。
 
+// Android Gradle Plugin 和它的依赖闭包随离线安装包一起分发，vkx 用
+// -PvkxMaven 把仓库位置传进来。构建全程不联网，AGP 的版本也就固定了——
+// 交给 google() 去解析的话，学员和作者可能拿到不同的版本。
+//
+// 属性只能在块内读：Gradle 要求 pluginManagement {} 是脚本的第一条语句，
+// 前面放一个 def 就会报「must appear before any other statements」。
 pluginManagement {
+    def vkxMaven = providers.gradleProperty("vkxMaven").getOrNull()
     repositories {
-        google()
-        mavenCentral()
-        gradlePluginPortal()
+        if (vkxMaven) {
+            maven { url = uri(vkxMaven) }
+        } else {
+            google()
+            mavenCentral()
+            gradlePluginPortal()
+        }
     }
 }
 
 dependencyResolutionManagement {
+    def vkxMaven = providers.gradleProperty("vkxMaven").getOrNull()
     repositories {
-        google()
-        mavenCentral()
+        if (vkxMaven) {
+            maven { url = uri(vkxMaven) }
+        } else {
+            google()
+            mavenCentral()
+        }
     }
 }
 

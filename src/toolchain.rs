@@ -307,14 +307,20 @@ pub fn source_dir(name: &str) -> Option<PathBuf> {
 }
 
 /// SDL3 的 Android .aar，供 Gradle 的 prefab 使用。
+/// 安卓构建要的 Gradle 依赖仓库（AGP 及其闭包），随离线包分发。
+pub fn maven_repo() -> Option<PathBuf> {
+    let dir = vkx_home().join("sdk/maven");
+    dir.is_dir().then_some(dir)
+}
+
 pub fn sdl_android_aar() -> Result<PathBuf> {
-    let dir = vkx_home().join("src/sdl3-android");
+    let dir = vkx_home().join("sdk/sdl3-android");
     let found = crate::fs::read_dir(&dir).ok().and_then(|entries| {
         entries
             .into_iter()
             .find(|path| path.extension().is_some_and(|ext| ext == "aar"))
     });
-    found.ok_or_else(|| missing("SDL3 的 Android aar", "src/sdl3-android"))
+    found.ok_or_else(|| missing("SDL3 的 Android aar", "sdk/sdl3-android"))
 }
 
 // ---------------------------------------------------------------------------

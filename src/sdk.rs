@@ -252,15 +252,76 @@ pub const ENTRIES: &[Entry] = &[
         origin: "https://mirrors.cloud.tencent.com/gradle/gradle-8.13-bin.zip",
     },
     Entry {
-        name: "libs",
+        name: "libs-macos-arm64",
         host: Host::MacosArm64,
-        file: "libs.tar.zst",
+        file: "libs-macos-arm64.tar.zst",
         format: Format::TarZst,
         dest: "libs/macos-arm64",
         pick: "",
-        blake3: "375060b31551da7e3da477500a2551a8cd85fcb90713ef8593fb0d9c8592449e",
-        about: "预编译库和头文件（按 target 分目录）",
-        origin: "",
+        blake3: "a2b93434454fe3e18f3351912853cff82dbba62a02ea260258e0e329766213f1",
+        about: "macOS 的预编译库",
+        origin: "vkx-libs 仓库的 CI 产出；源码和构建脚本见 libs/tools/",
+    },
+    Entry {
+        name: "libs-android-arm64",
+        host: Host::MacosArm64,
+        file: "libs-android-arm64.tar.zst",
+        format: Format::TarZst,
+        dest: "libs/android-arm64",
+        pick: "",
+        blake3: "e5cfc390d04095a028270bf37a421bbdde932e39c18b10f48e67e13f704aac58",
+        about: "安卓 arm64 的预编译库",
+        origin: "vkx-libs 仓库的 CI 产出；源码和构建脚本见 libs/tools/",
+    },
+    Entry {
+        name: "libs-android-x64",
+        host: Host::MacosArm64,
+        file: "libs-android-x64.tar.zst",
+        format: Format::TarZst,
+        dest: "libs/android-x64",
+        pick: "",
+        blake3: "04e63fd3f0f3493ec2dd5fc3683b89d694d36f5c179f76db094e11572f25ef82",
+        about: "安卓 x86_64 的预编译库",
+        origin: "vkx-libs 仓库的 CI 产出；源码和构建脚本见 libs/tools/",
+    },
+    Entry {
+        name: "libs-ios-arm64",
+        host: Host::MacosArm64,
+        file: "libs-ios-arm64.tar.zst",
+        format: Format::TarZst,
+        dest: "libs/ios-arm64",
+        pick: "",
+        blake3: "7bfc0f57d6ce5285c61171a2881852762221d1122dc12cd7919009320220ccff",
+        about: "iOS 的预编译库",
+        origin: "vkx-libs 仓库的 CI 产出；源码和构建脚本见 libs/tools/",
+    },
+    Entry {
+        name: "sdl3-android",
+        host: Host::MacosArm64,
+        file: "sdl3-android.tar",
+        format: Format::Tar,
+        dest: "sdl3-android",
+        pick: "",
+        blake3: "6149988b64f889924c45da096f82f4e3a80c1d7e068b7ad45225bb7d0433f07d",
+        about: "SDL3 的安卓预编译包（.aar）",
+        // 上游发的成品：四个 ABI 的 libSDL3.so、Java 层的 SDLActivity、头文件和
+        // prefab 元数据都在里面，Gradle 直接消费。不拆进 libs/android-*/ 是因为
+        // 它同时是 Java 依赖，拆开还得在构建时拼回去。
+        origin: "https://github.com/libsdl-org/SDL/releases/download/release-3.4.14/SDL3-devel-3.4.14-android.zip",
+    },
+    Entry {
+        name: "maven",
+        host: Host::MacosArm64,
+        file: "maven.tar.zst",
+        format: Format::TarZst,
+        dest: "maven",
+        pick: "maven",
+        blake3: "59305456595629393af126345820cb5cde897dd536f712628d3b3753834bb1fe",
+        about: "安卓构建要的 Gradle 依赖（AGP 及其闭包）",
+        // Gradle 默认去 google() / mavenCentral() 解析 AGP，那是安卓这条路上最后
+        // 一个联网口子——而且版本由 Gradle 自行解析，学员和作者可能拿到不一样的。
+        // 这里放的是一次干净构建拉下来的精确闭包（329 个文件），不是缓存里攒的一堆。
+        origin: "Android Gradle Plugin 8.13.2 的依赖闭包，用空 GRADLE_USER_HOME 跑一次构建收割",
     },
     Entry {
         name: "moltenvk",
@@ -406,15 +467,65 @@ pub const ENTRIES: &[Entry] = &[
         origin: "https://mirrors.cloud.tencent.com/gradle/gradle-8.13-bin.zip",
     },
     Entry {
-        name: "libs",
+        name: "libs-linux-x64",
         host: Host::LinuxX64,
-        file: "libs.tar.zst",
+        file: "libs-linux-x64.tar.zst",
         format: Format::TarZst,
         dest: "libs/linux-x64",
         pick: "",
-        blake3: "ef37e484f5c8ec1504fb2c074a8c80913866139f7c18b891b8d0d60f331a5ab4",
-        about: "预编译库和头文件（按 target 分目录）",
-        origin: "",
+        blake3: "de2a5f1145ba6952a3a7cf81aa1f097f5c164494ec077e8962fe1ba4c935d26b",
+        about: "Linux 的预编译库",
+        origin: "vkx-libs 仓库的 CI 产出；源码和构建脚本见 libs/tools/",
+    },
+    Entry {
+        name: "libs-android-arm64",
+        host: Host::LinuxX64,
+        file: "libs-android-arm64.tar.zst",
+        format: Format::TarZst,
+        dest: "libs/android-arm64",
+        pick: "",
+        blake3: "e5cfc390d04095a028270bf37a421bbdde932e39c18b10f48e67e13f704aac58",
+        about: "安卓 arm64 的预编译库",
+        origin: "vkx-libs 仓库的 CI 产出；源码和构建脚本见 libs/tools/",
+    },
+    Entry {
+        name: "libs-android-x64",
+        host: Host::LinuxX64,
+        file: "libs-android-x64.tar.zst",
+        format: Format::TarZst,
+        dest: "libs/android-x64",
+        pick: "",
+        blake3: "04e63fd3f0f3493ec2dd5fc3683b89d694d36f5c179f76db094e11572f25ef82",
+        about: "安卓 x86_64 的预编译库",
+        origin: "vkx-libs 仓库的 CI 产出；源码和构建脚本见 libs/tools/",
+    },
+    Entry {
+        name: "sdl3-android",
+        host: Host::LinuxX64,
+        file: "sdl3-android.tar",
+        format: Format::Tar,
+        dest: "sdl3-android",
+        pick: "",
+        blake3: "6149988b64f889924c45da096f82f4e3a80c1d7e068b7ad45225bb7d0433f07d",
+        about: "SDL3 的安卓预编译包（.aar）",
+        // 上游发的成品：四个 ABI 的 libSDL3.so、Java 层的 SDLActivity、头文件和
+        // prefab 元数据都在里面，Gradle 直接消费。不拆进 libs/android-*/ 是因为
+        // 它同时是 Java 依赖，拆开还得在构建时拼回去。
+        origin: "https://github.com/libsdl-org/SDL/releases/download/release-3.4.14/SDL3-devel-3.4.14-android.zip",
+    },
+    Entry {
+        name: "maven",
+        host: Host::LinuxX64,
+        file: "maven.tar.zst",
+        format: Format::TarZst,
+        dest: "maven",
+        pick: "maven",
+        blake3: "59305456595629393af126345820cb5cde897dd536f712628d3b3753834bb1fe",
+        about: "安卓构建要的 Gradle 依赖（AGP 及其闭包）",
+        // Gradle 默认去 google() / mavenCentral() 解析 AGP，那是安卓这条路上最后
+        // 一个联网口子——而且版本由 Gradle 自行解析，学员和作者可能拿到不一样的。
+        // 这里放的是一次干净构建拉下来的精确闭包（329 个文件），不是缓存里攒的一堆。
+        origin: "Android Gradle Plugin 8.13.2 的依赖闭包，用空 GRADLE_USER_HOME 跑一次构建收割",
     },
     Entry {
         name: "llvm",
@@ -567,15 +678,65 @@ pub const ENTRIES: &[Entry] = &[
         origin: "https://mirrors.cloud.tencent.com/gradle/gradle-8.13-bin.zip",
     },
     Entry {
-        name: "libs",
+        name: "libs-windows-x64",
         host: Host::WindowsX64,
-        file: "libs.tar.zst",
+        file: "libs-windows-x64.tar.zst",
         format: Format::TarZst,
         dest: "libs/windows-x64",
         pick: "",
-        blake3: "4d54c7858b53a02f7e435a5f868aced530a87f5bd045d8d9bf2bc3d650ddcc1c",
-        about: "预编译库和头文件（按 target 分目录）",
-        origin: "",
+        blake3: "6701fe821221bb93191481f8c273d72ef40fa49f30139a21f018d207cfb1a354",
+        about: "Windows 的预编译库",
+        origin: "vkx-libs 仓库的 CI 产出；源码和构建脚本见 libs/tools/",
+    },
+    Entry {
+        name: "libs-android-arm64",
+        host: Host::WindowsX64,
+        file: "libs-android-arm64.tar.zst",
+        format: Format::TarZst,
+        dest: "libs/android-arm64",
+        pick: "",
+        blake3: "e5cfc390d04095a028270bf37a421bbdde932e39c18b10f48e67e13f704aac58",
+        about: "安卓 arm64 的预编译库",
+        origin: "vkx-libs 仓库的 CI 产出；源码和构建脚本见 libs/tools/",
+    },
+    Entry {
+        name: "libs-android-x64",
+        host: Host::WindowsX64,
+        file: "libs-android-x64.tar.zst",
+        format: Format::TarZst,
+        dest: "libs/android-x64",
+        pick: "",
+        blake3: "04e63fd3f0f3493ec2dd5fc3683b89d694d36f5c179f76db094e11572f25ef82",
+        about: "安卓 x86_64 的预编译库",
+        origin: "vkx-libs 仓库的 CI 产出；源码和构建脚本见 libs/tools/",
+    },
+    Entry {
+        name: "sdl3-android",
+        host: Host::WindowsX64,
+        file: "sdl3-android.tar",
+        format: Format::Tar,
+        dest: "sdl3-android",
+        pick: "",
+        blake3: "6149988b64f889924c45da096f82f4e3a80c1d7e068b7ad45225bb7d0433f07d",
+        about: "SDL3 的安卓预编译包（.aar）",
+        // 上游发的成品：四个 ABI 的 libSDL3.so、Java 层的 SDLActivity、头文件和
+        // prefab 元数据都在里面，Gradle 直接消费。不拆进 libs/android-*/ 是因为
+        // 它同时是 Java 依赖，拆开还得在构建时拼回去。
+        origin: "https://github.com/libsdl-org/SDL/releases/download/release-3.4.14/SDL3-devel-3.4.14-android.zip",
+    },
+    Entry {
+        name: "maven",
+        host: Host::WindowsX64,
+        file: "maven.tar.zst",
+        format: Format::TarZst,
+        dest: "maven",
+        pick: "maven",
+        blake3: "59305456595629393af126345820cb5cde897dd536f712628d3b3753834bb1fe",
+        about: "安卓构建要的 Gradle 依赖（AGP 及其闭包）",
+        // Gradle 默认去 google() / mavenCentral() 解析 AGP，那是安卓这条路上最后
+        // 一个联网口子——而且版本由 Gradle 自行解析，学员和作者可能拿到不一样的。
+        // 这里放的是一次干净构建拉下来的精确闭包（329 个文件），不是缓存里攒的一堆。
+        origin: "Android Gradle Plugin 8.13.2 的依赖闭包，用空 GRADLE_USER_HOME 跑一次构建收割",
     },
     Entry {
         name: "llvm-mingw",
@@ -721,22 +882,59 @@ mod tests {
         }
     }
 
-    // 预编译库按 target 分目录之后，宿主那一份必须落在以自己命名的子目录里。
+    // 预编译库一个 target 一条，每条都必须解到以自己命名的子目录里。
     // 写错的话 CMake 那边找不到（generate.rs 按同一个名字拼路径），
     // 报错是一句 find_package 失败，看不出根因在组件表上。
     #[test]
-    fn libs_落在按_target_分的子目录里() {
+    fn 每条库都落在自己那个_target_的目录里() {
         for host in Host::ALL {
             let libs: Vec<_> = 某平台的(*host)
                 .into_iter()
-                .filter(|e| e.name == "libs")
+                .filter(|e| e.name.starts_with("libs-"))
                 .collect();
-            assert_eq!(libs.len(), 1, "{} 上的 libs 条目不是一条", host.name());
+            assert!(!libs.is_empty(), "{} 上一条预编译库都没有", host.name());
+            for e in &libs {
+                let target = e.name.trim_start_matches("libs-");
+                assert_eq!(
+                    e.dest,
+                    format!("libs/{target}"),
+                    "{} 的 {} 该解到 libs/{target}",
+                    host.name(),
+                    e.name
+                );
+            }
+            // 宿主自己那份必须在
+            assert!(
+                libs.iter()
+                    .any(|e| e.name == format!("libs-{}", host.name())),
+                "{} 上没有自己平台的预编译库",
+                host.name()
+            );
+        }
+    }
+
+    // 安卓是三个开发平台通吃的，所以每个包里都得有那两个 ABI 的库。
+    #[test]
+    fn 三个平台都带安卓的库() {
+        for host in Host::ALL {
+            let names: Vec<_> = 某平台的(*host).into_iter().map(|e| e.name).collect();
+            for want in ["libs-android-arm64", "libs-android-x64"] {
+                assert!(names.contains(&want), "{} 上缺 {}", host.name(), want);
+            }
+        }
+    }
+
+    // iOS 只能在 macOS 上构建，那份库也就只该出现在 macOS 的包里。
+    #[test]
+    fn ios_的库只在_macos_包里() {
+        for host in Host::ALL {
+            let has = 某平台的(*host)
+                .into_iter()
+                .any(|e| e.name == "libs-ios-arm64");
             assert_eq!(
-                libs[0].dest,
-                format!("libs/{}", host.name()),
-                "{} 的 libs 该解到 libs/{}",
-                host.name(),
+                has,
+                *host == Host::MacosArm64,
+                "{} 上的 libs-ios-arm64 存在性不对",
                 host.name()
             );
         }
@@ -747,7 +945,7 @@ mod tests {
     fn 每个平台都有构建必需的组件() {
         for host in Host::ALL {
             let 有: Vec<_> = 某平台的(*host).into_iter().map(|e| e.name).collect();
-            for 必需 in ["cmake", "ninja", "slang", "libs", "vulkan-sdk"] {
+            for 必需 in ["cmake", "ninja", "slang", "vulkan-sdk"] {
                 assert!(有.contains(&必需), "{} 上缺 {}", host.name(), 必需);
             }
         }

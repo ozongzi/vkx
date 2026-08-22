@@ -289,20 +289,8 @@ if(EXISTS \"${{VKX_SDK_LIBS}}/include\")
     target_include_directories(${{VKX_TARGET}} PRIVATE \"${{VKX_SDK_LIBS}}/include\")
 endif()
 
-target_link_libraries(${{VKX_TARGET}} PRIVATE SDL3::SDL3)
 # VKX_DEBUG 只在 Debug 配置下定义，用来开关校验层。
 target_compile_definitions(${{VKX_TARGET}} PRIVATE $<$<CONFIG:Debug>:VKX_DEBUG=1>)
-
-# Vulkan 函数的两种接法：
-if(IOS)
-    # 静态链接的 MoltenVK 已提供全部函数，用头文件里的原型直接调用。
-    target_link_libraries(${{VKX_TARGET}} PRIVATE Vulkan::Headers)
-    target_compile_definitions(${{VKX_TARGET}} PRIVATE VKX_STATIC_VULKAN=1)
-else()
-    # VK_NO_PROTOTYPES 去掉头文件里的声明，改由 volk 提供同名函数指针。
-    target_link_libraries(${{VKX_TARGET}} PRIVATE volk)
-    target_compile_definitions(${{VKX_TARGET}} PRIVATE VK_NO_PROTOTYPES)
-endif()
 
 # macOS：可执行文件放到构建目录根上，vkx run 按这个位置找它。
 if(APPLE AND NOT IOS)
@@ -345,42 +333,73 @@ endif()
         package_id = project.package_id,
     ));
 
-    // ---- 从源码编的库 ----
-    if !project.libs.is_empty() {
-        s.push_str(
-            "\n\
+    // ---- vkx.toml 的 dependencies ----
+    //
+    // 全部是预编译好的（离线包里的 libs 组件），所以这里只做两件事：
+    // find_package 找到它，target_link_libraries 链上去。开关不影响构建时间。
+    s.push_str(
+        "\n\
 # ---------------------------------------------------------------------------\n\
-# 从源码编的库（vkx.toml 的 [libs] 里打开的）\n\
+# 依赖（vkx.toml 的 dependencies）\n\
 # ---------------------------------------------------------------------------\n\
-# 预编译的 C 库和只有头文件的库不出现在这里——它们随时可用，直接 #include。\n",
-        );
-        for lib in crate::project::SOURCE_LIBS {
-            if !project.libs.iter().any(|l| l == lib.key) {
-                continue;
-            }
-            // 找不到就现在报错。之前是填一个猜的路径进去，结果 CMake 在
-            // add_subdirectory 那一行说「目录不存在」——那个错离真正的原因
-            // （sources 组件没取）隔了两层，读者根本不知道该干什么。
-            let dir = crate::toolchain::source_dir(lib.key)
-                .ok_or_else(|| {
-                    crate::error::Error::new(
-                        crate::error::Code::MissingComponent,
-                        format!("{} 打开了，但 SDK 里没有它的源码", lib.key),
-                        "用 `vkx install vkx-<平台>.zip` 把 sources 组件补上",
-                    )
-                    .hint(&format!("或者 `vkx remove {}` 关掉它", lib.key))
-                })?
-                .join(lib.cmake_subdir);
-            let dir = crate::toolchain::cmake_path(&dir);
+# 全是预编译的，改这个列表不影响构建时间，只影响链哪些库、暴露哪些头文件。\n\
+# 纯头文件的那几个（GLM、cpp-httplib、stb）不需要 find_package，\n\
+# 声明了就只是把 include 路径放出来——上面那句 target_include_directories\n\
+# 已经把整个 include/ 加进去了。\n",
+    );
+    if project.dependencies.is_empty() {
+        s.push_str("# （vkx.toml 里没有声明任何依赖）\n");
+    }
+    for name in &project.dependencies {
+        let Some(dep) = crate::project::find_dependency(name) else {
+            continue;
+        };
+        s.push_str(&format!("\n# {}\n", dep.about));
+
+        // Vulkan 那一支特殊：volk 是我们自己编的（见上面），而 iOS 上
+        // 静态链接的 MoltenVK 自带全部函数，不走 volk。
+        if dep.name == "Vulkan" {
+            s.push_str(
+                "if(IOS)\n\
+                 \x20   # 静态链接的 MoltenVK 已提供全部函数，用头文件里的原型直接调用。\n\
+                 \x20   target_link_libraries(${VKX_TARGET} PRIVATE Vulkan::Headers)\n\
+                 \x20   target_compile_definitions(${VKX_TARGET} PRIVATE VKX_STATIC_VULKAN=1)\n\
+                 else()\n\
+                 \x20   # VK_NO_PROTOTYPES 去掉头文件里的声明，改由 volk 提供同名函数指针。\n\
+                 \x20   target_link_libraries(${VKX_TARGET} PRIVATE volk)\n\
+                 \x20   target_compile_definitions(${VKX_TARGET} PRIVATE VK_NO_PROTOTYPES)\n\
+                 endif()\n",
+            );
+            continue;
+        }
+
+        // guard 非空的包在条件里：比如 OpenSSL 只有非 Windows 才编了
+        // （Windows 上 GameNetworkingSockets 用系统的 BCrypt）。
+        let (open, close, indent) = if dep.guard.is_empty() {
+            (String::new(), String::new(), "")
+        } else {
+            (
+                format!("if({})\n", dep.guard),
+                "endif()\n".to_string(),
+                "    ",
+            )
+        };
+        s.push_str(&open);
+        if !dep.package.is_empty() {
+            // REQUIRED：找不到就当场停，而不是等到链接期报一堆 undefined symbol。
             s.push_str(&format!(
-                "\n# {about}\nadd_subdirectory(\"{dir}\" {key} EXCLUDE_FROM_ALL)\n\
-                 target_link_libraries(${{VKX_TARGET}} PRIVATE {target})\n",
-                about = lib.about,
-                dir = dir,
-                key = lib.key,
-                target = lib.target,
+                "{indent}find_package({} REQUIRED{})\n",
+                dep.package,
+                if dep.config_mode { " CONFIG" } else { "" }
             ));
         }
+        if !dep.targets.is_empty() {
+            s.push_str(&format!(
+                "{indent}target_link_libraries(${{VKX_TARGET}} PRIVATE {})\n",
+                dep.targets.join(" ")
+            ));
+        }
+        s.push_str(&close);
     }
 
     // ---- 着色器 ----
@@ -481,7 +500,7 @@ mod tests {
             name: "app".into(),
             package_id: "tech.yinli.app".into(),
             version: version.into(),
-            libs: Vec::new(),
+            dependencies: vec!["SDL3".into(), "Vulkan".into()],
         }
     }
 
@@ -546,6 +565,57 @@ mod tests {
             text.contains(&format!("${{VKX_SDK_LIBS_ROOT}}/{host}")),
             "桌面分支没指向 libs/{host}"
         );
+    }
+
+    // dependencies 决定链哪些库。写错了不会当场报错——CMakeLists 里少一行
+    // target_link_libraries，要到链接期才炸成一堆 undefined symbol。
+    #[test]
+    fn 声明的依赖会被链进去() {
+        let text = 生成("deps", "0.1.0");
+        // 默认模版声明了 SDL3 和 Vulkan
+        assert!(
+            text.contains("find_package(SDL3 REQUIRED CONFIG)"),
+            "SDL3 没 find_package"
+        );
+        assert!(text.contains("SDL3::SDL3"), "SDL3 没链上");
+        // Vulkan 那支是特殊的：iOS 用 Vulkan::Headers，其余用自己编的 volk
+        assert!(text.contains("PRIVATE volk"), "volk 没链上");
+        assert!(
+            text.contains("Vulkan::Headers"),
+            "iOS 那支没有 Vulkan::Headers"
+        );
+        // 没声明的不该出现
+        assert!(!text.contains("Jolt::Jolt"), "没声明 Jolt 却链了它");
+        assert!(
+            !text.contains("GameNetworkingSockets::"),
+            "没声明 GNS 却链了它"
+        );
+    }
+
+    // 着色器规则是扫 shaders/*.slang 生成的。它整段丢了的话，CMake 照样配置成功，
+    // 要到编译期才报「triangle_frag.spv.h file not found」——那个错离真正的原因
+    // （生成器少写了一段）隔得很远。我改依赖那段时就把它误删过一次。
+    #[test]
+    fn 着色器规则要在生成的_cmakelists_里() {
+        let dir = std::env::temp_dir().join("vkxgen-shaders");
+        let _ = std::fs::remove_dir_all(&dir);
+        let project = 造一个工程(&dir, "0.1.0");
+        // 放一个带两个入口点的着色器
+        std::fs::write(
+            dir.join("shaders/rect.slang"),
+            "[shader(\"vertex\")]\nfloat4 vertex_main() : SV_Position { return 0; }\n             [shader(\"fragment\")]\nfloat4 fragment_main() : SV_Target { return 0; }\n",
+        )
+        .unwrap();
+        assert!(super::cmake(&project).is_ok());
+        let text = std::fs::read_to_string(dir.join("target/CMakeLists.txt")).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            text.matches("vkx_add_slang_shader").count(),
+            2,
+            "两个入口点该生成两条规则"
+        );
+        assert!(text.contains("ENTRY  vertex_main"));
+        assert!(text.contains("ENTRY  fragment_main"));
     }
 
     // 模版里的占位符是 {{}}，CMake 的是 ${}；生成出来的文件里不该再有前者。

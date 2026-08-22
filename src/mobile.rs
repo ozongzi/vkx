@@ -67,6 +67,14 @@ fn run_gradle_task(project: &Project, profile: Profile, task: &str) -> Result<Pa
             prepend_to_path(ninja.parent().unwrap_or(Path::new("."))),
         );
 
+    // Gradle 的依赖也在包里，指过去并让它离线跑：--offline 之后 Gradle 一旦
+    // 需要联网就会直接失败，而不是悄悄去 google() 拉一份回来。
+    if let Some(dir) = toolchain::maven_repo() {
+        command
+            .arg(format!("-PvkxMaven={}", dir.display()))
+            .arg("--offline");
+    }
+
     // 依赖源码走本地缓存，构建不用联网。SDL3 由 .aar 提供，这里只需要另外两个。
     if let Some(dir) = toolchain::source_dir("vulkan-headers") {
         command.arg(format!("-PvkxVulkanHeaders={}", dir.display()));

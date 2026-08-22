@@ -6,11 +6,14 @@ name = "{{PROJECT_NAME}}"
 package_id = "{{PACKAGE_ID}}"
 # 发布版本号，vkx dist 产出的包名和各平台的版本字段都取自这里。
 version = "0.1.0"
+# 要链哪些库、暴露哪些头文件。
+#
+# 全部是预编译好的（随离线安装包分发，一个 target 一份），所以改这个列表
+# 不影响构建时间——它只决定链接和头文件，不会让你多等几分钟编译。
+#
+# `vkx deps` 看全部可用的名字，`vkx add <名字>` / `vkx remove <名字>` 增删。
+dependencies = ["SDL3", "Vulkan"]
 
 [vkx]
 # 生成这个工程时用的 vkx 版本。
 version = "{{VKX_VERSION}}"
-
-[libs]
-jolt = false            # 物理引擎
-gamenetworking = false  # 局内实时传输
