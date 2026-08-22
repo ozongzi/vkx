@@ -1,223 +1,174 @@
-# vkx 要做到的七件事
+# vkx 是什么
 
-安装脚本只装 vkx 本身。之后所有事情——取依赖、构建、打包、生成 IDE 工程、
-自我更新——都由 vkx 负责。
+一个 Vulkan + SDL3 的跨平台游戏工程脚手架。它管三件事：把工具链装齐、把工程
+构建出来、把产物打成能发给别人的包。
+
+设计上只有一条主线：**装完之后，构建期不出网。**
 
 ---
 
-## 1. 从指定站点取本平台的大包，且能只取一部分
+## 一切都在离线安装包里
 
-每个平台一个 zip，里面是这个平台需要的全部东西：工具（cmake / ninja / slangc /
-clang-format）、预编译的 C 库、头文件、要源码编的那两个库、Vulkan loader 和校验层、
-MoltenVK、以及 Android 的 JDK / Gradle / SDK / NDK。
+一个开发平台一个包，里面是这个平台需要的全部东西：
+
+| | |
+|---|---|
+| 工具 | cmake、ninja、slangc、clang-format |
+| C++ 编译器 | Windows 的 llvm-mingw、Linux 的 LLVM（macOS 用 Xcode 的） |
+| 预编译库 | 每个 target 一份，见下 |
+| Vulkan | loader、校验层，macOS 上还有 MoltenVK |
+| 安卓 | JDK、Gradle、SDK、NDK、SDL3 的 .aar、Gradle 的依赖仓库 |
 
 ```sh
-vkx fetch                          # 取本平台默认需要的部分
-vkx fetch --component android      # 要出安卓包时才取那几 GB
-vkx fetch
-VKX_MIRROR=https://example.com/vkx vkx fetch    # 换站点
+./vkx-setup-macos-arm64        # 双击或在终端里跑，半分钟
 ```
+
+自解压包 = 安装器 + 一个 zip 首尾相接（见 `payload.rs`）。安装器只取出 vkx
+本身，剩下的交给 `vkx install <安装包路径>` ——安装包自己就是那个 zip，所以
+不必先解出来再喂进去，省掉一次 1.6 GB 的临时拷贝。
+
+每一样在装之前按 blake3 校验，对不上就不装、不留半成品。装到一半断了再跑一次
+就接着装：已经装好并且校验通过的直接跳过。
 
 ### 不调任何外部二进制
 
-下载、解压、校验全在进程内：HTTP 用 ureq + rustls，解压用纯 Rust 的
-tar + flate2 + ruzstd，校验用 sha2。
-
-不用 curl / tar / sha256sum 的理由是它们靠不住：Windows 上 `sha256sum` 根本
-不存在，System32 里那个 bsdtar 是 3.3.2（2017 年的 libarchive），不支持 zstd。
-依赖「机器上碰巧装了什么」的工具，出问题很难远程判断。
-
-证书优先走操作系统的验证（`platform-verifier` 用的是系统 API，不是外部
-二进制），企业网里的 TLS 中间人也能正常工作；系统那条走不通时回退到内置的
-webpki-roots。
-
-压缩格式按魔数认：gzip 是 `1f 8b`，zstd 是 `28 b5 2f fd`。换格式不用改代码。
-
-### 容器：多个 .tar.gz 首尾相接
-
-原本想用 zip，但 zip 的中央目录在文件末尾——取中间一段拿到的字节不是合法
-zip，还得自己实现解压。
-
-gzip 流可以首尾相接（多成员 gzip，标准允许），于是改成：每个组件各压一个
-`.tar.gz`，按顺序拼成一个文件。**每一段单独拿出来仍然是合法的 `.tar.gz`**，
-`tar xzf` 直接能解，不用写任何解析代码。
-
-### 打包时按组件排序，让每个组件是一段连续字节
-
-如果条目在 zip 里是散的，取一个组件要发几千个 Range 请求。所以打包时把同一组件的
-条目排在一起，于是：
-
-```
-sdk-macos-arm64.zip
-  [0        .. 12 MB]   toolchain      cmake ninja slangc clang-format
-  [12 MB    .. 31 MB]   libs           libSDL3.a libmbedtls.a … + include/
-  [31 MB    .. 46 MB]   vulkan         loader + 校验层 + MoltenVK
-  [46 MB    .. 88 MB]   sources        jolt/ GameNetworkingSockets/
-  [88 MB    .. 4.9 GB]  android        JDK Gradle SDK NDK
-```
-
-**一个组件 = 一个 Range 请求。**
-
-### 清单
-
-和 zip 并排放一个小文件，vkx 先取它：
-
-```json
-{
-  "platform": "macos-arm64",
-  "zip": "sdk-macos-arm64.zip",
-  "zip_sha256": "…",
-  "components": {
-    "toolchain": { "offset": 0,        "length": 12582912, "sha256": "…" },
-    "libs":      { "offset": 12582912, "length": 19922944, "sha256": "…" },
-    "android":   { "offset": 92274688, "length": 5033164800, "sha256": "…" }
-  }
-}
-```
-
-不去解析 zip 自己的中央目录，因为带 NDK 的包有二十万个条目，中央目录本身就有几十 MB。
-自带清单只有几百字节。
-
-取一个组件的流程：读清单 → 一次 `Range: bytes=offset-(offset+length-1)` →
-校验 sha256 → 解开到 `~/.vkx/sdk/<组件>/`。中断可续传，校验不过就重来。
-
-### 站点要求
-
-只要支持 `Range`（Caddy 的 `file_server` 默认支持）。服务器忽略 `Range` 时会把
-整个包发回来，vkx 按下载字节数当场拦下并说清原因，而不是等到 sha256 失败。
-
-### 实测
-
-用一个 22 MB 的测试包（toolchain 513 B / libs 2 MB / android 20 MB），
-默认的 `vkx fetch` 只取桌面需要的两段：
-
-```
-/sdk/macos-arm64/manifest.txt        422
-/sdk/macos-arm64/sdk-macos-arm64.pack        513
-/sdk/macos-arm64/sdk-macos-arm64.pack    2001286
-合计 2002221 字节 / 整包 22008595 字节 = 9.1%
-```
-
-再跑一次只传清单的 422 字节，其余全部跳过。
+下载、解压、校验全在进程内：解压用纯 Rust 的 tar + flate2 + ruzstd，校验用
+blake3。不用 curl / tar / sha256sum，是因为它们靠不住——Windows 上
+`sha256sum` 根本不存在，System32 里那个 bsdtar 是 2017 年的 libarchive，
+不支持 zstd。依赖「机器上碰巧装了什么」的工具，出问题很难远程判断。
 
 ---
 
-## 2. 自我更新
+## 预编译库：一个 target 一份
+
+```
+~/.vkx/sdk/libs/
+  macos-arm64/    linux-x64/    windows-x64/
+  android-arm64/  android-x64/  ios-arm64/
+```
+
+每份里是同一套库的该平台版本：SDL3、FreeType、mbedTLS、zlib、Vulkan-Headers、
+volk、OpenSSL、protobuf、GameNetworkingSockets、Jolt，外加纯头文件的 GLM、
+cpp-httplib、stb。
+
+每个包只带自己用得上的那几份：macOS 的包带桌面 + 安卓两个 ABI + iOS，
+Linux 和 Windows 的包带自己 + 安卓两个 ABI（安卓靠 NDK，三个平台都能编；
+iOS 要 Xcode，只有 macOS 能编）。
+
+**全部从源码编，不抓各家的官方二进制。** C 的 ABI 是稳的，混着用还看不出问题；
+C++ 不是。vkx 把工具链钉死了，官方二进制多半是别的编译器、别的标准库编的，
+混进来会在链接期炸——或者更糟，链上了但运行时行为不对。
+
+**没有联网兜底。** 早先的版本在 `find_package` 失败时会用 FetchContent 去
+GitHub 拉一份源码现编。那看着贴心，实际是个会静默生效的不可复现来源：上游的
+tag 可能移动，学员和作者的产物可能不是同一个东西。现在全删了，找不到就报错。
+
+---
+
+## 依赖开关
+
+`vkx.toml` 里一个数组：
+
+```toml
+[project]
+dependencies = ["SDL3", "Vulkan", "FreeType"]
+```
 
 ```sh
-vkx self update              # 从默认站点取最新版
-vkx self update --check      # 只看有没有新版
+vkx deps                  # 列出全部可用的，标出哪些已启用
+vkx add Jolt
+vkx remove FreeType
 ```
 
-- Unix：写到临时文件、`chmod +x`、`rename` 覆盖。正在运行的进程持有旧 inode，安全。
-- Windows：不能覆盖正在运行的 exe。先把自己 `rename` 成 `vkx.old.exe`，写入新的，
-  下次启动时删掉旧的。
-
-新版 vkx 对应新的 sdk 包时，更新完直接提示（并可以 `--fetch` 一起做掉）。
-工程里不记任何依赖版本，所以升级是原子的，不存在部分升级。
+因为库全是预编译好的，这个开关**不影响构建时间**，只决定链哪些库、暴露哪些
+头文件。传递依赖由 vkx 补齐——声明 FreeType 就自动带上 zlib，声明
+GameNetworkingSockets 就自动带上 protobuf 和 OpenSSL。各家的 CMake 配置包会
+把用到的库写进 link interface 却不 `find_package`，少一个就报
+「target ZLIB::ZLIB not found」，那个错离真正原因隔着一层。
 
 ---
 
-## 3. 构建
+## 构建
 
 ```sh
 vkx build [--release] [--target desktop|android|ios|ios-device]
 vkx run   [--release] [-- 传给游戏的参数]
 ```
 
-读 `vkx.toml`，生成 `target/CMakeLists.txt`，调 cmake + ninja。
-详见 `build-config.md`。
+读 `vkx.toml`，生成 `target/CMakeLists.txt`，调 cmake + ninja。生成的文件
+每次构建都会覆盖，不要手改；它表达不了的东西写进工程根目录的 `extra.cmake`，
+会在末尾被 include。
+
+C++ 编译器一律是 clang：Windows 用包里的 llvm-mingw（不能用 MSVC——预编译库
+是 llvm-mingw 编的，两种 ABI 混在一起会在链接期炸），Linux 用包里的 LLVM 并
+静态链 libc++（发行版默认往往连 g++ 都没有，而且 Linux 上的 clang 默认仍用
+系统的 libstdc++，各机器不一样），macOS 和 iOS 用 Xcode 的 Apple clang。
 
 ---
 
-## 4. 一键出各平台安装包
+## 打包
 
 ```sh
-vkx dist                     # 本平台
-vkx dist --target all
+vkx dist [--target desktop|android]
 ```
 
 | 平台 | 产物 |
-| --- | --- |
-| macOS | `.app` + `.dmg`（MoltenVK 放进 `Contents/Frameworks/`，ad-hoc 签名） |
-| Windows | `.zip`，静态链接，解压即用 |
-| Linux | `.tar.gz`、`.deb`、`.rpm` |
-| Android | 签名 `.apk` + `.aab` |
-| iOS | `.ipa`（`vkx.toml` 里填了 `development_team` 才能出真机包） |
+|---|---|
+| macOS | `.app`（内嵌 MoltenVK，ad-hoc 签名）+ `.dmg` |
+| Windows | `.zip`（静态链接，解压即用） |
+| Linux | `.tar.gz` |
+| Android | 签名 APK + AAB |
 
----
-
-## 5. 生成 IDE 工程
+**iOS 不在其中。** vkx 到「生成 Xcode 工程」为止：
 
 ```sh
-vkx xcode          # 生成 target/ios/*.xcodeproj，并打开
-vkx xcode --macos  # macOS 那份
+vkx build --target ios-device     # 生成 .xcodeproj，然后交给 Xcode
 ```
 
-根目录另外生成 `CMakePresets.json`，CLion / Visual Studio / VS Code 的 CMake
-扩展打开工程目录就能直接构建调试。
+签名绑 Apple 账号（证书、描述文件、团队 ID），`exportOptions.plist` 的格式还
+跟着 Xcode 版本变。vkx 发出去之后不再更新，代劳只会给学员留下一个修不好的报错。
 
 ---
 
-## 6. help 要能当手册用
-
-`vkx help` 不止列命令，还带专题页：
+## 两套模版
 
 ```sh
-vkx help                 # 总览：命令 + 常见流程
-vkx help build           # 单个命令的详细说明
-vkx help toolchain       # 装了什么、在哪、占多少、怎么清
-vkx help ios             # iOS 从零到真机的完整路径
-vkx help android
-vkx help mirror          # 怎么换站点、怎么自建
-vkx help E0012           # 某个错误码的长篇解释
+vkx new game            # 客户端：窗口、Vulkan 渲染、五个平台的壳
+vkx new api --server    # 服务端：一个 HTTP 服务，没有窗口也没有渲染
 ```
 
-`vkx doctor` 检查环境并逐项报告：哪些组件在、版本对不对、Xcode 装没装、
-显卡驱动有没有提供 Vulkan ICD。
+服务端不声明 SDL3 和 Vulkan，所以生成的 CMakeLists 里一行相关的东西都没有，
+产物也不依赖图形栈。
 
 ---
 
-## 7. 每个错误都要给出解法
+## help 要能当手册用
 
-现状：`Error::new` 有 44 处调用，约 13 处没有 hint；`From<io::Error>` 会把所有
-IO 错误变成没有 hint 的裸消息。这两个口子要堵上。
-
-### 让「没有解法的错误」编译不过
-
-```rust
-// 改成两个参数都必填，构造不出没有解法的错误
-Error::new(what: impl Into<String>, fix: impl Into<String>)
+```sh
+vkx help              # 命令一览
+vkx help manifest     # vkx.toml 有哪些字段
+vkx help toolchain    # 工具链装在哪、怎么清
+vkx help install      # 工具链是怎么装的
+vkx help ios          # 从零到真机的完整路径
+vkx help version      # 为什么依赖不追版本
+vkx help E0003        # 展开某个错误码
 ```
 
-### IO 错误必须带上下文
+---
 
-去掉 `From<std::io::Error>`，改成显式加上下文：
+## 每个错误都要给出解法
 
-```rust
-std::fs::read(&path).context("读取 {path}", "确认文件存在且有读权限")?
-```
+错误类型自带 `hint` 字段，构造错误时必须填。**没有解法的错误编译不过**——这是
+类型系统层面的约束，不是纪律。
 
-删掉自动转换之后，任何漏加上下文的地方直接编译不过。
+| 码 | 含义 |
+|---|---|
+| E0001 | 不在 vkx 工程里（往上都没找到 vkx.toml） |
+| E0002 | vkx.toml 读不出来，或缺必填字段 |
+| E0003 | 工具链的某个组件不在 ~/.vkx 里 |
+| E0004 | 调用的外部命令失败（cmake / ninja / slangc / gradle / xcodebuild） |
+| E0005 | 读写文件失败 |
+| E0006 | 当前环境不满足这条命令的要求 |
+| E0007 | 命令用法不对 |
 
-### 错误码
-
-```
-error[E0012]: 找不到 Vulkan 运行时
-  → macOS 需要 MoltenVK。运行 `vkx fetch --component vulkan` 取回来。
-  → 详细说明：vkx help E0012
-```
-
-短消息保持一行，长篇放 `vkx help E0012`，也方便读者直接搜索码。
-
-### 覆盖到的典型场景
-
-| 情况 | 要给的解法 |
-| --- | --- |
-| 镜像连不上 | 换 `VKX_MIRROR`，或列出可用的备用站点 |
-| 磁盘不够 | 说清还差多少，指出 `vkx clean --cache` 能腾出多少 |
-| Xcode 没装 | `xcode-select --install`；真机还需要完整 Xcode 而非 CLT |
-| 显卡没有 Vulkan ICD | Windows/Linux 更新驱动；Linux 装 `mesa-vulkan-drivers` |
-| CMake 配置失败 | 把 CMake 的输出折叠起来，只把第一条 `CMake Error` 提到最前 |
-| 编译错误 | 不复述编译器输出，只在错误来自生成的 CMake 时说明「这个文件是生成的，改 vkx.toml」 |
-| 校验层报错 | 指出这是 Vulkan 用法错误，不是 vkx 的问题，并给出对应的规范条目链接 |
+IO 错误必须带上下文：不能只说「文件不存在」，要说是在做什么的时候、哪个文件。

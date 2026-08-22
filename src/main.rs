@@ -79,6 +79,13 @@ enum Command {
         args: Vec<String>,
     },
     /// 打出可以直接分发的安装包
+    ///
+    /// macOS 出 .app 和 .dmg，Windows 出 .zip，Linux 出 .tar.gz，
+    /// Android 出签名 APK 和 AAB，全部落在工程的 dist/ 目录下。
+    ///
+    /// iOS 不在其中：那边的分发包由 Xcode 出（Archive -> Distribute App）。
+    /// 签名绑 Apple 账号，格式也跟着 Xcode 版本变，vkx 代劳只会留下一个
+    /// 修不好的报错。先 `vkx build --target ios-device` 生成 Xcode 工程。
     Dist {
         /// 目标平台，默认是本机桌面
         #[arg(long, value_enum, default_value_t = Target::Desktop)]
@@ -109,14 +116,14 @@ enum Command {
     #[command(subcommand)]
     #[command(name = "self")]
     Selfcmd(SelfCommand),
-    /// 打开一个要从源码编译的库
+    /// 声明一个依赖：链进它的库、暴露它的头文件
     Add {
         /// 库名；`vkx deps` 列出可选项
         name: String,
     },
-    /// 关掉一个之前打开的库
+    /// 去掉一个依赖
     Remove { name: String },
-    /// 列出可用的库，以及哪些正在参与构建
+    /// 列出全部可用的依赖，标出哪些已经启用
     Deps,
     /// 展开某个错误码，或者某个专题的详细说明
     Help {

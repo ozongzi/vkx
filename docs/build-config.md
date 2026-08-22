@@ -36,100 +36,83 @@ mygame/
 
 ## vkx.toml 全部字段
 
+这份文档原来列的是一份设计草案，字段比实际实现的多。下面是**当前真的会被读取**
+的全部字段——多写的会被忽略，不会报错，所以这里如实列清楚：
+
 ```toml
 [project]
 name = "mygame"                  # 可执行文件名，同时是 CMake target 名
 package_id = "com.moba.mygame"   # Android applicationId / iOS bundle id
-version = "0.1.0"
-cxx_standard = 20                # 可选，默认 20
+version = "0.1.0"                # dist 的包名和各平台版本字段都取它
+dependencies = ["SDL3", "Vulkan"]  # 要链哪些库、暴露哪些头文件
 
-
-# ---------------------------------------------------------------------------
-# 要从源码编的库：只有这两个值得开关，因为它们各自是几分钟的编译时间。
-# 预编译的 C 库和只有头文件的库永远可用，不用声明——想用 stb_image 直接 #include。
-# ---------------------------------------------------------------------------
-[libs]
-jolt = false
-gamenetworking = false
-
-# ---------------------------------------------------------------------------
-# 源码：默认递归收集 src/ 下的 .c .cc .cpp .cxx
-# ---------------------------------------------------------------------------
-[source]
-dirs = ["src"]
-exclude = ["src/experiments/**"]
-include_dirs = ["src"]           # 默认等于 dirs，所以 #include "gpu/gpu.h" 直接可用
-
-# ---------------------------------------------------------------------------
-# 着色器：默认扫 shaders/*.slang，每个 [shader(...)] 入口各出一份 SPIR-V，
-# 转成 C 数组嵌进二进制，头文件名是 <文件名>_<入口>.spv.h
-# ---------------------------------------------------------------------------
-[shaders]
-dir = "shaders"
-include_dirs = ["shaders"]       # 让 .slang 之间能 #include
-
-# ---------------------------------------------------------------------------
-# 任意文件嵌成 C 数组，生成 <名> 和 <名>_SIZE
-# ---------------------------------------------------------------------------
-[embed]
-files = ["assets/font.bin"]
-
-# ---------------------------------------------------------------------------
-# 平台
-# ---------------------------------------------------------------------------
-[android]
-min_sdk = 28
-target_sdk = 35
-abis = ["arm64-v8a"]
-
-[ios]
-development_team = "ABCDE12345"  # 填了才能出真机包
-deployment_target = "16.0"
-
-# ---------------------------------------------------------------------------
-# 逃生舱：TOML 表达不了的事写在这里
-# ---------------------------------------------------------------------------
-[build]
-cmake_include = "extra.cmake"    # 生成的 CMakeLists 末尾 include 它
-defines = ["MY_FLAG=1"]
+[vkx]
+version = "0.2.7"                # 生成这个工程时用的 vkx 版本
 ```
+
+草案里有过、但**没有实现**的：`cxx_standard`（固定 C++20）、`[source]` 的
+`dirs` / `exclude`（固定递归收集 `src/` 下的 `.c .cc .cpp .cxx`）、`[shaders]`
+的各项（固定扫 `shaders/*.slang`）、`[embed]`、`[build] cmake_include`
+（逃生舱是工程根目录的 `extra.cmake`）。想要哪个再加，但别在文档里写着
+却不生效——那比没有更糟。
+
+源码和着色器都是自动收集的：往 `src/` 里加文件、往 `shaders/` 里加一个
+`[shader(...)]` 入口点，都不用改任何配置。
 
 ---
 
-## 依赖的三种形态
-
-镜像清单里每个库标明自己是哪一种，vkx 按形态决定生成什么。
+## 依赖：全部预编译
 
 | 形态 | 例子 | 生成的 CMake |
 | --- | --- | --- |
-| **预编译二进制**（C ABI 稳定） | SDL3、mbedTLS、zlib、FreeType | 指向 `~/.vkx/lib/<平台>/` 的 imported target |
-| **只有头文件** | cpp-httplib、stb_image、GLM | 一条 `target_include_directories` |
-| **源码**（C++ ABI，不能预编译） | Jolt、GameNetworkingSockets、Tracy | `add_subdirectory` 进 `~/.vkx/src/<库>` |
+| **有 CMake 配置包** | SDL3、FreeType、mbedTLS、protobuf、GNS、Jolt、OpenSSL | `find_package(<包> REQUIRED CONFIG)` + `target_link_libraries` |
+| **只有 Find 模块** | zlib | `find_package(ZLIB REQUIRED)`（模块模式，zlib 不发配置包） |
+| **只有头文件** | GLM、cpp-httplib、stb | 什么都不生成——`include/` 整个已经在搜索路径上 |
+| **自己编的一个 .c** | volk | `add_library(volk STATIC ...)`，见下 |
 
-C++ 库不发二进制，因为它的 `.a` 要和你的标准库实现、异常/RTTI 开关、Windows
-运行时全部对齐，对不上就是链接失败或者运行时崩在 `std::string` 的析构里。
+早先这里写的是「C++ 库不能预编译，只能 `add_subdirectory` 源码现编」。那个判断
+的前提是编译器不确定；现在工具链钉死了（Windows llvm-mingw、Linux 自带的
+clang + 静态 libc++、Apple 平台 Xcode 的 clang），C++ 库就可以也应该预编译——
+每个 target 一份，见 `vkx.md`。
+
+volk 是例外：它就一个 `.c`，我们自己编。不用它自带的 CMake 包，是因为那个包会
+把打包机器的绝对路径写进 `INTERFACE_INCLUDE_DIRECTORIES`，在读者机器上不存在。
+
+### 传递依赖由 vkx 补齐
+
+各家的配置包把自己用到的库写进 link interface，却不替你 `find_package`。所以
+只声明 FreeType 会报「target ZLIB::ZLIB not found」——那个错离真正的原因隔着
+一层。依赖表里记了 `requires`：
+
+```
+FreeType              -> zlib
+protobuf              -> zlib
+GameNetworkingSockets -> protobuf, OpenSSL
+```
+
+展开之后按表的顺序排，被依赖的先 `find_package`。
+
+平台差异也在表里：OpenSSL 只有非 Windows 编了（Windows 上 GNS 用系统的
+BCrypt），它的 `find_package` 包在 `if(NOT WIN32)` 里。
 
 ---
 
 ## 命令
 
 ```sh
-vkx add jolt          # 把 [libs] 里的 jolt 改成 true，重新生成 CMake
-vkx remove jolt
-vkx deps              # 列出 sdk 包里有什么、哪些正在参与构建
+vkx deps                  # 列出全部可用的依赖，标出哪些已启用
+vkx add Jolt              # 往 dependencies 里加一个
+vkx remove FreeType
 ```
+
+因为库全是预编译好的，开关**不影响构建时间**——它只决定链哪些库、暴露哪些
+头文件。以前那套「打开一个就多等几分钟编译」已经没有了。
+
+`vkx add` 就地改 `vkx.toml` 里的 dependencies 数组，保留你的注释和字段顺序
+（不是整个文件重新序列化），并按依赖表的顺序重排。
 
 不追版本：vkx 的版本号就是依赖集的版本号，一个 vkx 对应一套确定的库，
 不存在版本求解和锁文件。
-
-`vkx add` 做三件事：
-
-1. 查镜像清单，确认这个库有、版本对
-2. 该库的源码或二进制不在 `~/.vkx` 里就下载过来（增量，不用重装整套环境）
-3. 写 `vkx.toml`，重新生成 `target/CMakeLists.txt`
-
-`build` / `run` / `dist` 在开跑之前都会检查一次：`vkx.toml` 的修改时间比生成的
-CMakeLists 新，或者 `[vkx] version` 和当前 vkx 对不上，就先重新生成。
 
 ---
 
@@ -137,47 +120,59 @@ CMakeLists 新，或者 `[vkx] version` 和当前 vkx 对不上，就先重新�
 
 生成物是给人看的——出问题时用户读的是他没写过的文件，所以要带注释、排版正常。
 
+真实产物长这样（`vkx new` 之后 `vkx build` 一次，看 `target/CMakeLists.txt`）：
+
 ```cmake
-# 由 vkx 0.2.0 从 ../vkx.toml 生成。别手改这个文件，改了下次构建会被覆盖。
-# 要加 TOML 表达不了的东西，写进 [build] cmake_include 指向的那个文件。
+# 由 vkx 0.2.7 从 ../vkx.toml 生成。别手改这个文件——下次构建会覆盖掉。
+
 cmake_minimum_required(VERSION 3.24)
 project(mygame LANGUAGES C CXX)
-
 set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# ---- 源码：来自 [source] ----
-file(GLOB_RECURSE VKX_SOURCES CONFIGURE_DEPENDS
-     ${CMAKE_SOURCE_DIR}/../src/*.cpp ...)
+# ---- 预编译库：一个 target 一份，目标在配置期才定得下来 ----
+set(VKX_SDK_LIBS_ROOT "~/.vkx/sdk/libs" CACHE PATH "")
+if(ANDROID)
+    if(ANDROID_ABI STREQUAL "arm64-v8a")
+        set(VKX_SDK_LIBS "${VKX_SDK_LIBS_ROOT}/android-arm64")
+    else()
+        set(VKX_SDK_LIBS "${VKX_SDK_LIBS_ROOT}/android-x64")
+    endif()
+elseif(IOS)
+    set(VKX_SDK_LIBS "${VKX_SDK_LIBS_ROOT}/ios-arm64")
+else()
+    set(VKX_SDK_LIBS "${VKX_SDK_LIBS_ROOT}/macos-arm64")
+endif()
+list(APPEND CMAKE_PREFIX_PATH "${VKX_SDK_LIBS}")
 
-add_executable(mygame ${VKX_SOURCES})          # Android 上是 add_library(main SHARED ...)
-target_include_directories(mygame PRIVATE ../src)
-
-# ---- 依赖：来自 [dependencies] ----
-# SDL3  预编译
-add_library(SDL3::SDL3 STATIC IMPORTED)
-set_target_properties(SDL3::SDL3 PROPERTIES
-    IMPORTED_LOCATION "$ENV{HOME}/.vkx/lib/macos-arm64/libSDL3.a" ...)
-
-# cpp-httplib  仅头文件
-target_include_directories(mygame PRIVATE "$ENV{HOME}/.vkx/include/cpp-httplib")
-
-# Jolt  源码（[libs] jolt = true 时才有这段）
-add_subdirectory("$ENV{HOME}/.vkx/src/jolt" jolt EXCLUDE_FROM_ALL)
-target_link_libraries(mygame PRIVATE Jolt)
-
-# Tracy  源码（开发期用，出货不带）
-if(VKX_TARGET_DESKTOP)
-    add_subdirectory("$ENV{HOME}/.vkx/src/tracy" tracy EXCLUDE_FROM_ALL)
-    target_link_libraries(mygame PRIVATE TracyClient)
+# ---- SDL3 和 Vulkan：声明了才生成，服务端工程这一整段都没有 ----
+find_package(VulkanHeaders REQUIRED CONFIG)
+if(NOT IOS)
+    add_library(volk STATIC "${VKX_SDK_LIBS}/include/volk.c")
+    ...
 endif()
 
-# ---- 着色器：来自 [shaders] ----
-# ...每个入口一条 slangc 规则 + 转 C 数组
+# ---- 目标：源码递归收集自 src/ ----
+file(GLOB_RECURSE VKX_SOURCES CONFIGURE_DEPENDS "${VKX_ROOT}/src/*.cpp" ...)
+add_executable(mygame ${VKX_SOURCES})
+target_include_directories(mygame PRIVATE "${VKX_ROOT}/src")
+
+# ---- 依赖：来自 vkx.toml 的 dependencies ----
+# 窗口、输入、音频、文件对话框
+find_package(SDL3 REQUIRED CONFIG)
+target_link_libraries(mygame PRIVATE SDL3::SDL3)
+
+# 字体栅格化
+find_package(Freetype REQUIRED CONFIG)
+target_link_libraries(mygame PRIVATE Freetype::Freetype)
+
+# ---- 着色器：扫 shaders/*.slang 的 [shader(...)] 入口自动生成 ----
+vkx_add_slang_shader(mygame SOURCE ... ENTRY vertex_main STAGE vertex ...)
 
 # ---- 逃生舱 ----
-include(${CMAKE_SOURCE_DIR}/../extra.cmake OPTIONAL)
+include("${VKX_ROOT}/extra.cmake" OPTIONAL)
 ```
+
+里面没有 `FetchContent`，一处都没有——库全在包里，构建期不出网。
 
 ---
 
@@ -186,7 +181,8 @@ include(${CMAKE_SOURCE_DIR}/../extra.cmake OPTIONAL)
 根目录生成 `CMakePresets.json`，指向 `target/`。CLion、Visual Studio、
 VS Code 的 CMake 扩展都读它，打开工程目录就能直接构建调试，不用手动指路。
 
-iOS 的 `.xcodeproj` 仍然由 CMake 生成到 `target/ios/`，和现在一样。
+iOS 的 `.xcodeproj` 由 CMake 生成到 `build/ios/`（真机）或 `build/ios-simulator/`。
+`vkx build --target ios-device` 生成完就停手，签名和上架在 Xcode 里做。
 
 ---
 

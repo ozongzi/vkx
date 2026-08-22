@@ -84,9 +84,11 @@ $ vkx new
   sdk/.installed/<组件>          装好的戳，内容是那个组件的 blake3
   sdk/toolchain/{cmake,ninja,slang,clang-format}
   sdk/vulkan/{vulkan,moltenvk}
-  sdk/libs/{include,lib}         预编译的 C 库、头文件库、Vulkan-Headers、volk
-  sdk/sources/{jolt,gamenetworking}
+  sdk/toolchain/{llvm-mingw,llvm} Windows 和 Linux 自带的 C++ 编译器
+  sdk/libs/<target>/             预编译库，一个 target 一份
   sdk/android/{jdk,gradle,sdk}   JDK / Gradle / Android SDK / NDK
+  sdk/maven/                     安卓构建要的 Gradle 依赖（AGP 及其闭包）
+  sdk/sdl3-android/              SDL3 的安卓 .aar
 ```
 
 `sdk/` 下一个目录对应依赖表里的一个条目，`vkx install` 就是按这个对应关系解包的。
@@ -122,7 +124,7 @@ Linux 和 Windows 的 loader 由显卡驱动提供，只补校验层的目录。
 | Windows | `.zip` | 可执行文件静态链接，解压即用 |
 | Linux | `.tar.gz` | 同上 |
 | Android | 签名 `.apk` + `.aab` | APK 直接安装，AAB 上架 Google Play |
-| iOS | `.ipa` | 需要 `vkx.toml` 里配好 `development_team` |
+| iOS | —— | 不由 vkx 出。`vkx build --target ios-device` 生成 Xcode 工程，Archive 在 Xcode 里做 |
 
 ## 移动端开箱即用
 
@@ -131,16 +133,14 @@ Linux 和 Windows 的 loader 由显卡驱动提供，只补校验层的目录。
 所以 `vkx build --release --target android` 直接产出签名好的 APK。
 上架商店请换成你自己保管的正式密钥。
 
-**Xcode 工程**：iOS 构建本身就会生成 `.xcodeproj`（路径会打印出来），
-用 Xcode 打开即可调试，和命令行构建是同一份配置。要连真机，在 `vkx.toml`
-里填上团队 ID：
+**Xcode 工程**：`vkx build --target ios-device` 生成 `.xcodeproj` 就停手
+（路径会打印出来）。用 Xcode 打开，在里面选 Team 打开自动签名，就能连真机跑、
+也能 Archive 上架。
 
-```toml
-[ios]
-development_team = "ABCDE12345"
-```
-
-填了之后真机构建会打开 Xcode 的自动签名。
+vkx 不代劳签名和出 `.ipa`：那些事绑 Apple 账号（证书、描述文件、团队 ID），
+`exportOptions.plist` 的格式还跟着 Xcode 版本变。vkx 发出去之后不再更新，
+代劳只会留下一个修不好的报错。模拟器那条内循环不受影响：`vkx run --target ios`
+照旧编译、安装、启动。
 
 ## 开发
 
@@ -164,6 +164,6 @@ cargo run -- new /tmp/demo
 | 平台 | 状态 |
 | --- | --- |
 | macOS (Apple Silicon) | 已验证：像素回读确认三角形；`.app` 在干净环境下用包内 MoltenVK 正常启动 |
-| iOS 模拟器 | 已验证：构建 → 安装 → 启动 → 截图确认；`.ipa` 需要证书，未验证 |
+| iOS 模拟器 | 已验证：构建 → 安装 → 启动 → 截图确认。真机和上架走 Xcode，vkx 只生成工程 |
 | Android (arm64) | 已验证：签名 APK（apksigner 校验通过）+ AAB 产出；未在真机上跑过 |
 | Windows / Linux | 未验证 |

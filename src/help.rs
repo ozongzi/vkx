@@ -22,18 +22,34 @@ const TOPICS: &[(&str, &str, &str)] = &[
         "manifest",
         "vkx.toml 有哪些字段",
         "工程根目录下的 vkx.toml 是唯一需要你编辑的配置文件。\n\n\
-         [project]  name / package_id / version\n\
-         [libs]     要从源码编的库开关\n\
-         CMakeLists.txt 由 vkx 生成到 target/，不要手改。",
+         [project]\n\
+         \x20name          可执行文件名，同时是 CMake 里的 target 名\n\
+         \x20package_id    Android 的 applicationId、iOS 的 bundle identifier\n\
+         \x20version       发布版本号，dist 的包名和各平台的版本字段都取它\n\
+         \x20dependencies  要链哪些库、暴露哪些头文件\n\n\
+         [vkx]\n\
+         \x20version       生成这个工程时用的 vkx 版本\n\n\
+         dependencies 里的库全是预编译好的，改它不影响构建时间，只影响链接。\n\
+         `vkx deps` 列出全部可用的名字，`vkx add` / `vkx remove` 增删。\n\n\
+         CMakeLists.txt 由 vkx 生成到 target/，不要手改——每次构建都会覆盖。\n\
+         它表达不了的东西写进工程根目录的 extra.cmake，会在末尾被 include。",
     ),
     (
         "toolchain",
         "工具链装在哪、怎么清",
         "全部组件都在 ~/.vkx 下：\n\n\
-         bin/      vkx 自己\n\
-         sdk/      从安装包装进来的组件（工具、库、Vulkan、Android）\n\
-         cache/    下载缓存，可随时删\n\n\
-         删掉整个 ~/.vkx 就等于卸载干净。",
+         bin/                 vkx 自己\n\
+         sdk/toolchain/       cmake、ninja、slangc、clang-format，\n\
+         \x20                     外加 Windows 的 llvm-mingw / Linux 的 llvm\n\
+         sdk/libs/<target>/   预编译库，一个 target 一份\n\
+         sdk/vulkan/          Vulkan loader 和校验层（macOS 还有 MoltenVK）\n\
+         sdk/android/         JDK、Gradle、Android SDK 和 NDK\n\
+         sdk/maven/           安卓构建要的 Gradle 依赖\n\
+         sdk/sdl3-android/    SDL3 的安卓 .aar\n\n\
+         C++ 编译器：Windows 和 Linux 用 sdk 里自带的（发行版默认往往连 g++\n\
+         都没有，而且 Linux 上的 clang 默认仍用系统 libstdc++，各机器不一样），\n\
+         macOS 和 iOS 用 Xcode 的 Apple clang。\n\n\
+         删掉整个 ~/.vkx 就等于卸载干净，或者用 `vkx self uninstall`。",
     ),
     (
         "ios",
@@ -49,7 +65,8 @@ const TOPICS: &[(&str, &str, &str)] = &[
         "install",
         "工具链是怎么装的",
         "vkx 不从网上取任何东西。它要的一切——cmake、ninja、slangc、Vulkan、\n\
-         JDK、Gradle、Android SDK 和 NDK——都在离线安装包里，一个开发平台一个：\n\n\
+         JDK、Gradle、Android SDK 和 NDK、各 target 的预编译库、C++ 编译器——\n\
+         都在离线安装包里，一个开发平台一个：\n\n\
          vkx install vkx-macos-arm64.zip\n\
          vkx install vkx-linux-x64.zip\n\
          vkx install vkx-windows-x64.zip\n\n\
@@ -64,7 +81,9 @@ const TOPICS: &[(&str, &str, &str)] = &[
         "一个 vkx 版本对应一套确定的依赖，版本号写死在二进制里，出 CVE 也不动。\n\n\
          好处是构建可复现：同一个 vkx 在任何机器、任何时候装出来的都是同一套东西，\n\
          不会因为上游发了新 patch 而变。想换依赖就换 vkx——没有别的路径能改动\n\
-         你机器上装的是什么。",
+         你机器上装的是什么。\n\n\
+         构建期也不出网：库全是预编译好随包分发的，没有任何「找不到就去 GitHub\n\
+         拉一份」的兜底。那种兜底看着贴心，实际是个会静默生效的不可复现来源。",
     ),
 ];
 
