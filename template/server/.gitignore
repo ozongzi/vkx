@@ -1,0 +1,24 @@
+# 构建产物
+target/
+.DS_Store
+.cache/
+compile_commands.json
+
+# Android：Gradle 的中间产物，以及 vkx 自动生成/下载的东西
+android/.gradle/
+android/target/
+android/app/target/
+android/app/libs/          # SDL3 的 .aar，由 vkx 从本地环境复制过来
+android/local.properties   # 本机的 SDK 路径，由 vkx 生成
+
+# 签名密钥：由 vkx 生成，属于本机凭据，不要提交
+android/keystore/
+android/keystore.properties
+.idea/
+
+# iOS / Xcode
+*.xcodeproj/xcuserdata/
+DerivedData/
+
+# vkx 生成，不进版本库
+CMakePresets.json

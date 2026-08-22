@@ -44,7 +44,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// 新建一个 Vulkan + SDL3 工程
+    /// 新建一个工程：默认是客户端，加 --server 就是服务端
     New {
         /// 工程名（同时是可执行文件名）；不给就交互式询问
         name: Option<String>,
@@ -54,6 +54,9 @@ enum Command {
         /// Android / iOS 的包名；不给就交互式询问
         #[arg(long)]
         package_id: Option<String>,
+        /// 建一个服务端工程：一个 HTTP 服务，没有窗口也没有渲染
+        #[arg(long)]
+        server: bool,
     },
     /// 编译当前工程
     Build {
@@ -139,19 +142,29 @@ fn dispatch(cli: Cli) -> Result<u8> {
             name,
             path,
             package_id,
+            server,
         } => {
             // 两项都是必需的：命令行上没给的，问用户要。
             let name = resolve_name(name, path.as_deref())?;
             let package_id = resolve_package_id(package_id, &name)?;
 
+            let kind = if server {
+                scaffold::Kind::Server
+            } else {
+                scaffold::Kind::Client
+            };
             let options = scaffold::NewOptions {
                 name,
                 path,
                 package_id,
+                kind,
             };
             let root = scaffold::create(&options)?;
             // 顺手把 Android 的 release 签名密钥备好，工程开箱就能出签名包。
-            signing::setup_for_new_project(&root, &options.package_id);
+            // 服务端不出安卓包，也就不需要密钥。
+            if kind == scaffold::Kind::Client {
+                signing::setup_for_new_project(&root, &options.package_id);
+            }
             let relative = pretty_path(&root);
 
             eprintln!();
@@ -160,10 +173,16 @@ fn dispatch(cli: Cli) -> Result<u8> {
             eprintln!("  cd {relative}");
             eprintln!("  vkx run");
             eprintln!();
-            // 别在这儿吓唬人：SDL3 是 sdk/libs 里的预编译库，find_package 直接
-            // 找到，既不出网也不编译。首次构建真正要编的只有 volk 那一个 .c、
-            // 两个着色器和工程自己的源码，十几秒的事。
-            eprintln!("{}", ui::dim("首次构建要编一遍着色器和工程源码，很快。"));
+            if kind == scaffold::Kind::Server {
+                eprintln!("{}", ui::dim("跑起来之后试试："));
+                eprintln!("{}", ui::dim("  curl http://127.0.0.1:8080/hello"));
+                eprintln!("{}", ui::dim("  curl http://127.0.0.1:8080/sum/3/4"));
+            } else {
+                // 别在这儿吓唬人：SDL3 是 sdk/libs 里的预编译库，find_package
+                // 直接找到，既不出网也不编译。首次构建真正要编的只有 volk 那
+                // 一个 .c、两个着色器和工程自己的源码，十几秒的事。
+                eprintln!("{}", ui::dim("首次构建要编一遍着色器和工程源码，很快。"));
+            }
             Ok(0)
         }
         Command::Build { release, target } => {

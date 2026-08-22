@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::builder::{self, Profile};
+use crate::builder::Profile;
 use crate::error::{Code, Error, Result};
 use crate::project::Project;
 use crate::signing;
@@ -73,14 +73,6 @@ fn run_gradle_task(project: &Project, profile: Profile, task: &str) -> Result<Pa
         command
             .arg(format!("-PvkxMaven={}", dir.display()))
             .arg("--offline");
-    }
-
-    // 依赖源码走本地缓存，构建不用联网。SDL3 由 .aar 提供，这里只需要另外两个。
-    if let Some(dir) = toolchain::source_dir("vulkan-headers") {
-        command.arg(format!("-PvkxVulkanHeaders={}", dir.display()));
-    }
-    if let Some(dir) = toolchain::source_dir("volk") {
-        command.arg(format!("-PvkxVolk={}", dir.display()));
     }
 
     toolchain::run(&mut command, "Gradle 构建")?;
@@ -283,7 +275,6 @@ pub fn configure_ios(project: &Project, device: bool) -> Result<PathBuf> {
             "-DVKX_MOLTENVK_LIB={}",
             toolchain::cmake_path(&moltenvk)
         ));
-    builder::add_offline_sources(&mut configure);
 
     if !device {
         // 模拟器不需要签名，关掉省事。

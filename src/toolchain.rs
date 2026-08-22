@@ -300,12 +300,6 @@ pub fn llvm_mingw() -> Option<PathBuf> {
 // 依赖源码（构建时离线取用）
 // ---------------------------------------------------------------------------
 
-/// 返回 ~/.vkx/src/<name>，不存在则返回 None（届时 CMake 会自己去联网拉）。
-pub fn source_dir(name: &str) -> Option<PathBuf> {
-    let dir = vkx_home().join("sdk/sources").join(name);
-    dir.is_dir().then_some(dir)
-}
-
 /// SDL3 的 Android .aar，供 Gradle 的 prefab 使用。
 /// 安卓构建要的 Gradle 依赖仓库（AGP 及其闭包），随离线包分发。
 pub fn maven_repo() -> Option<PathBuf> {

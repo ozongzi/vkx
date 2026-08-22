@@ -28,22 +28,6 @@ impl Profile {
     }
 }
 
-/// 给 CMake 配置命令补上依赖源码的位置。
-///
-/// 安装脚本已经把 SDL3 等源码放在 ~/.vkx/src 下，用 FetchContent 的
-/// FETCHCONTENT_SOURCE_DIR_<名字> 指过去，构建全程不用联网。
-pub fn add_offline_sources(command: &mut Command) {
-    for (name, variable) in [
-        ("sdl3", "FETCHCONTENT_SOURCE_DIR_SDL3"),
-        ("vulkan-headers", "FETCHCONTENT_SOURCE_DIR_VULKANHEADERS"),
-        ("volk", "FETCHCONTENT_SOURCE_DIR_VOLK"),
-    ] {
-        if let Some(dir) = toolchain::source_dir(name) {
-            command.arg(format!("-D{variable}={}", toolchain::cmake_path(&dir)));
-        }
-    }
-}
-
 /// 挑生成器和编译器。
 ///
 /// 一律 Ninja，编译器一律 clang：Windows 用 SDK 里的 llvm-mingw，Linux 用 SDK 里的
@@ -178,7 +162,6 @@ pub fn build(project: &Project, profile: Profile) -> Result<PathBuf> {
         .arg(format!("-DVKX_SLANGC={}", toolchain::cmake_path(&slangc)))
         .arg("-DCMAKE_EXPORT_COMPILE_COMMANDS=ON");
     add_generator(&mut configure)?;
-    add_offline_sources(&mut configure);
 
     toolchain::run(&mut configure, "CMake 配置").map_err(|e| {
         e.hint(format!(

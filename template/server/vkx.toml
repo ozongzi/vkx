@@ -1,0 +1,21 @@
+# 工程描述文件。vkx 靠它认出工程根目录，并读取下面这些字段。
+[project]
+# 可执行文件名，同时也是 CMake 里的 target 名。
+name = "{{PROJECT_NAME}}"
+# Android 的 applicationId 和 iOS 的 bundle identifier。
+# 服务端用不上，但字段留着——以后想给同一个工程出个客户端不用改结构。
+package_id = "{{PACKAGE_ID}}"
+# 发布版本号，vkx dist 产出的包名和各平台的版本字段都取自这里。
+version = "0.1.0"
+# 要链哪些库、暴露哪些头文件。
+#
+# 服务端没有窗口也没有渲染，所以不声明 SDL3 和 Vulkan——声明了才会链，
+# 不声明就一行相关的 CMake 都不会生成。
+#
+# `vkx deps` 看全部可用的名字，`vkx add <名字>` / `vkx remove <名字>` 增删。
+# 要做局内实时传输就 `vkx add GameNetworkingSockets`。
+dependencies = ["cpp-httplib"]
+
+[vkx]
+# 生成这个工程时用的 vkx 版本。
+version = "{{VKX_VERSION}}"

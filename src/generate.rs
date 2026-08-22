@@ -161,7 +161,6 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 list(APPEND CMAKE_MODULE_PATH \"${{CMAKE_CURRENT_SOURCE_DIR}}/cmake\")
-include(FetchContent)
 include(VkxShaders)
 
 # SDK 里那份预编译的库。每个 target 一份，因为库是编好的二进制，换个目标就
@@ -184,77 +183,6 @@ else()
 endif()
 if(EXISTS \"${{VKX_SDK_LIBS}}\")
     list(APPEND CMAKE_PREFIX_PATH \"${{VKX_SDK_LIBS}}\")
-endif()
-
-set(VKX_SDL_TAG \"release-3.4.14\" CACHE STRING \"\")
-set(VKX_VULKAN_HEADERS_TAG \"v1.4.313\" CACHE STRING \"\")
-set(VKX_VOLK_TAG \"1.4.304\" CACHE STRING \"\")
-
-# ---------------------------------------------------------------------------
-# 依赖
-# ---------------------------------------------------------------------------
-
-function(vkx_fetch_sdl)
-    message(STATUS \"vkx: 从源码构建 SDL3 (${{VKX_SDL_TAG}})\")
-    set(SDL_SHARED OFF CACHE BOOL \"\" FORCE)
-    set(SDL_STATIC ON CACHE BOOL \"\" FORCE)
-    set(SDL_TEST_LIBRARY OFF CACHE BOOL \"\" FORCE)
-    set(SDL_EXAMPLES OFF CACHE BOOL \"\" FORCE)
-    set(SDL_INSTALL OFF CACHE BOOL \"\" FORCE)
-    FetchContent_Declare(SDL3
-        GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-        GIT_TAG ${{VKX_SDL_TAG}}
-        GIT_SHALLOW TRUE)
-    FetchContent_MakeAvailable(SDL3)
-endfunction()
-
-if(ANDROID)
-    # Gradle 已经通过 prefab 把官方 .aar 里的 SDL3 准备好了。
-    find_package(SDL3 REQUIRED CONFIG)
-elseif(IOS OR FETCHCONTENT_SOURCE_DIR_SDL3)
-    # iOS 上系统装的是 macOS 版，用不了，只能交叉编译。
-    vkx_fetch_sdl()
-else()
-    find_package(SDL3 3.2 QUIET CONFIG)
-    if(NOT SDL3_FOUND)
-        vkx_fetch_sdl()
-    endif()
-endif()
-
-# SDK 里带了，就不用出网。VulkanHeaders 的 config 装在 share/cmake 下，
-# find_package 顺着 CMAKE_PREFIX_PATH 找得到。
-find_package(VulkanHeaders QUIET CONFIG)
-if(NOT VulkanHeaders_FOUND)
-    message(STATUS \"vkx: SDK 里没有 Vulkan-Headers，从源码取\")
-    FetchContent_Declare(VulkanHeaders
-        GIT_REPOSITORY https://github.com/KhronosGroup/Vulkan-Headers.git
-        GIT_TAG ${{VKX_VULKAN_HEADERS_TAG}}
-        GIT_SHALLOW TRUE)
-    FetchContent_MakeAvailable(VulkanHeaders)
-endif()
-
-# volk 在运行期加载 Vulkan 函数指针，链接期就不必依赖 loader。
-# iOS 不需要它：那边静态链接 MoltenVK，函数本来就在二进制里。
-#
-# volk 就一个 .c，自己编，不用 find_package——它自带的 CMake 包会把打包机器
-# 的绝对路径写进 INTERFACE_INCLUDE_DIRECTORIES，在读者机器上是不存在的路径。
-if(NOT IOS)
-    if(EXISTS \"${{VKX_SDK_LIBS}}/include/volk.c\")
-        add_library(volk STATIC \"${{VKX_SDK_LIBS}}/include/volk.c\")
-        target_include_directories(volk PUBLIC \"${{VKX_SDK_LIBS}}/include\")
-    else()
-        message(STATUS \"vkx: SDK 里没有 volk，从源码取\")
-        FetchContent_Declare(volk
-            GIT_REPOSITORY https://github.com/zeux/volk.git
-            GIT_TAG ${{VKX_VOLK_TAG}}
-            GIT_SHALLOW TRUE)
-        set(VOLK_PULL_IN_VULKAN OFF CACHE BOOL \"\" FORCE)
-        FetchContent_MakeAvailable(volk)
-    endif()
-    target_link_libraries(volk PUBLIC Vulkan::Headers)
-    if(NOT WIN32)
-        target_link_libraries(volk PUBLIC ${{CMAKE_DL_LIBS}})
-    endif()
 endif()
 
 # ---------------------------------------------------------------------------
@@ -333,6 +261,43 @@ endif()
         package_id = project.package_id,
     ));
 
+    let wants = |name: &str| project.dependencies.iter().any(|d| d == name);
+
+    // ---- SDL3 和 Vulkan 的接法 ----
+    //
+    // 这两个和别的依赖不一样，得单独写：Android 的 SDL3 来自上游的 .aar
+    // （Gradle 用 prefab 准备好），volk 是一个 .c 我们自己编，而 iOS 上静态
+    // 链接的 MoltenVK 自带全部函数、根本不用 volk。
+    //
+    // 没声明就一行都不生成——server 那种工程不该拖着 SDL3 和 Vulkan。
+    if wants("SDL3") || wants("Vulkan") {
+        s.push_str(
+            "\n\
+# ---------------------------------------------------------------------------\n\
+# SDL3 和 Vulkan\n\
+# ---------------------------------------------------------------------------\n",
+        );
+    }
+    if wants("Vulkan") {
+        s.push_str(
+            "\n\
+# volk 在运行期加载 Vulkan 函数指针，链接期就不必依赖 loader。\n\
+# iOS 不需要它：那边静态链接 MoltenVK，函数本来就在二进制里。\n\
+#\n\
+# volk 就一个 .c，自己编，不用 find_package——它自带的 CMake 包会把打包机器\n\
+# 的绝对路径写进 INTERFACE_INCLUDE_DIRECTORIES，在读者机器上是不存在的路径。\n\
+find_package(VulkanHeaders REQUIRED CONFIG)\n\
+if(NOT IOS)\n\
+\x20   add_library(volk STATIC \"${VKX_SDK_LIBS}/include/volk.c\")\n\
+\x20   target_include_directories(volk PUBLIC \"${VKX_SDK_LIBS}/include\")\n\
+\x20   target_link_libraries(volk PUBLIC Vulkan::Headers)\n\
+\x20   if(NOT WIN32)\n\
+\x20       target_link_libraries(volk PUBLIC ${CMAKE_DL_LIBS})\n\
+\x20   endif()\n\
+endif()\n",
+        );
+    }
+
     // ---- vkx.toml 的 dependencies ----
     //
     // 全部是预编译好的（离线包里的 libs 组件），所以这里只做两件事：
@@ -356,8 +321,11 @@ endif()
         };
         s.push_str(&format!("\n# {}\n", dep.about));
 
-        // Vulkan 那一支特殊：volk 是我们自己编的（见上面），而 iOS 上
-        // 静态链接的 MoltenVK 自带全部函数，不走 volk。
+        // SDL3 在 Android 上来自上游的 .aar（Gradle 用 prefab 准备好），
+        // 其余平台来自 libs/<target>/。两边都是 find_package(SDL3 CONFIG)，
+        // 只是找到的东西不同，所以这里不用分支——写在注释里免得下次有人来加。
+        //
+        // Vulkan 那一支的 volk 已经在上面建好了，这里只负责链。
         if dep.name == "Vulkan" {
             s.push_str(
                 "if(IOS)\n\

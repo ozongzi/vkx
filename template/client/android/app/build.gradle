@@ -40,12 +40,8 @@ android {
             cmake {
                 // 传给 CMake 的参数，路径都由 vkx 用 -P 属性提供：
                 //   vkxSlangc         着色器编译器
-                //   vkxVulkanHeaders  本地的 Vulkan-Headers 源码，避免构建时联网
-                //   vkxVolk           本地的 volk 源码
                 arguments "-DANDROID_STL=c++_shared",
-                          "-DVKX_SLANGC=${project.findProperty('vkxSlangc') ?: 'slangc'}",
-                          "-DFETCHCONTENT_SOURCE_DIR_VULKANHEADERS=${project.findProperty('vkxVulkanHeaders') ?: ''}",
-                          "-DFETCHCONTENT_SOURCE_DIR_VOLK=${project.findProperty('vkxVolk') ?: ''}"
+                          "-DVKX_SLANGC=${project.findProperty('vkxSlangc') ?: 'slangc'}"
             }
         }
 

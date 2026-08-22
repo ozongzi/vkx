@@ -1,0 +1,34 @@
+# 代码风格。跑 `vkx fmt` 会按这份配置格式化 src/ 下的全部代码。
+#
+# 命名约定这份配置管不了（那是 clang-tidy 的活），但规矩很简单，一句话：
+# 我们写的东西一律 snake_case，API 给的东西保持原样。类型名是 CamelCase，
+# 常量是 SCREAMING_SNAKE——和 rustfmt 一致。
+#
+# 这么定的好处是一眼能分清「谁写的」：一个文件里 Vulkan 的标识符和自有标识符
+# 大致一半一半，create_swapchain() 和 vkCreateSwapchainKHR() 形状不同，
+# 不用想就知道哪个是自己的。
+BasedOnStyle: Google
+Language: Cpp
+Standard: c++20
+
+# 100 列。Vulkan 的类型名和枚举都很长，80 列会逼出大量没必要的换行。
+ColumnLimit: 100
+IndentWidth: 4
+AccessModifierOffset: -4
+
+# 左花括号只在函数定义时换行，其余跟在行尾。
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+
+# 指针和引用贴类型：写的是 `VkDevice* out` 而不是 `VkDevice *out`。
+PointerAlignment: Left
+DerivePointerAlignment: false
+
+# 保留手工对齐的行尾注释，代码里有不少是刻意对齐成一列的。
+AlignTrailingComments: true
+ReflowComments: false
+
+# include 分组：本工程的头文件在前，第三方和标准库在后。
+IncludeBlocks: Preserve
+SortIncludes: CaseSensitive

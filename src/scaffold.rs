@@ -8,12 +8,42 @@ use crate::ui;
 
 /// 模版整个内嵌进二进制：`vkx new` 不联网也能用，
 /// 而且模版版本和 vkx 版本永远是配套的。
-static TEMPLATE: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/template");
+///
+/// 两套：客户端有窗口、渲染、安卓和 iOS 的壳；服务端只有一个 main.cpp，
+/// 连 SDL3 和 Vulkan 都不声明。它们的差别大到不值得共用一套再打补丁。
+static CLIENT: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/template/client");
+static SERVER: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/template/server");
+
+/// 新建哪一种工程。
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    /// 客户端：窗口、Vulkan 渲染，能出五个平台的包。
+    Client,
+    /// 服务端：一个 HTTP 服务，没有窗口也没有渲染。
+    Server,
+}
+
+impl Kind {
+    fn template(self) -> &'static Dir<'static> {
+        match self {
+            Kind::Client => &CLIENT,
+            Kind::Server => &SERVER,
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Kind::Client => "客户端",
+            Kind::Server => "服务端",
+        }
+    }
+}
 
 pub struct NewOptions {
     pub name: String,
     pub path: Option<PathBuf>,
     pub package_id: String,
+    pub kind: Kind,
 }
 
 /// 工程要生成到哪个目录：没给 --path 就是当前目录下的同名目录。
@@ -50,9 +80,18 @@ pub fn create(options: &NewOptions) -> Result<PathBuf> {
     let root = target_root(&options.name, options.path.as_deref())?;
     ensure_available(&root)?;
 
-    ui::step(&format!("创建工程 {}", root.display()));
+    ui::step(&format!(
+        "创建{}工程 {}",
+        options.kind.name(),
+        root.display()
+    ));
     crate::fs::create_dir_all(&root)?;
-    write_dir(&TEMPLATE, &root, &options.name, &options.package_id)?;
+    write_dir(
+        options.kind.template(),
+        &root,
+        &options.name,
+        &options.package_id,
+    )?;
 
     Ok(root)
 }
@@ -96,7 +135,7 @@ fn substitute(text: &str, name: &str, package_id: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{TEMPLATE, default_package_id, rewrite_path, substitute};
+    use super::{CLIENT, SERVER, default_package_id, rewrite_path, substitute};
     use include_dir::Dir;
     use std::path::Path;
 
@@ -143,10 +182,14 @@ mod tests {
         }
     }
 
+    /// 两套模版的全部文件。占位符那类检查两边都要过。
     fn 模版文件() -> Vec<(String, String)> {
         let mut out = Vec::new();
-        遍历(&TEMPLATE, &mut out);
-        assert!(!out.is_empty(), "模版一个文件都没内嵌进来");
+        遍历(&CLIENT, &mut out);
+        let client = out.len();
+        遍历(&SERVER, &mut out);
+        assert!(client > 0, "客户端模版一个文件都没内嵌进来");
+        assert!(out.len() > client, "服务端模版一个文件都没内嵌进来");
         out
     }
 
@@ -166,6 +209,38 @@ mod tests {
                 .collect();
             assert!(残留.is_empty(), "{path} 里还剩没替换的占位符：{残留:?}");
         }
+    }
+
+    // 服务端不该拖着窗口和渲染：它的 dependencies 里不能出现 SDL3 或 Vulkan，
+    // 否则生成的 CMakeLists 会去 find_package(SDL3)，而服务器上未必有图形栈。
+    #[test]
+    fn 服务端模版不声明_sdl3_和_vulkan() {
+        let mut files = Vec::new();
+        遍历(&SERVER, &mut files);
+        let (_, toml) = files
+            .iter()
+            .find(|(p, _)| p == "vkx.toml")
+            .expect("服务端模版没有 vkx.toml");
+        let line = toml
+            .lines()
+            .find(|l| l.trim_start().starts_with("dependencies"))
+            .expect("服务端模版的 vkx.toml 里没有 dependencies");
+        assert!(!line.contains("SDL3"), "服务端不该声明 SDL3：{line}");
+        assert!(!line.contains("Vulkan"), "服务端不该声明 Vulkan：{line}");
+        assert!(line.contains("cpp-httplib"), "服务端得有 HTTP 库：{line}");
+    }
+
+    // 客户端反过来：没有 SDL3 和 Vulkan 就开不了窗。
+    #[test]
+    fn 客户端模版声明了_sdl3_和_vulkan() {
+        let mut files = Vec::new();
+        遍历(&CLIENT, &mut files);
+        let (_, toml) = files.iter().find(|(p, _)| p == "vkx.toml").unwrap();
+        let line = toml
+            .lines()
+            .find(|l| l.trim_start().starts_with("dependencies"))
+            .unwrap();
+        assert!(line.contains("SDL3") && line.contains("Vulkan"), "{line}");
     }
 
     // 白名单不能长毛：留在文件里的占位符，得确认它真的还在那个文件里。
